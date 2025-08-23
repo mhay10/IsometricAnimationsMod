@@ -11,15 +11,17 @@ import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.util.Objects;
 
 import static com.isoanimations.IsometricAnimations.LOGGER;
 
-public class AnimationHandler {
+public class AnimationFrameGenerator {
     // Command context
     private FabricClientCommandSource source = null;
 
-    // Animation params
+    // Frame generation params
     private final BlockPos pos1;
     private final BlockPos pos2;
     private final int scale;
@@ -27,17 +29,17 @@ public class AnimationHandler {
     private final int slant;
     private final double duration;
 
-    // Animation state
+    // Frame generation state
     private double timeElapsed = 0.0;
     private boolean isRunning = false;
     private boolean frameExported = false;
     private boolean isComplete = false;
 
-    public AnimationHandler(FabricClientCommandSource source, BlockPos pos1, BlockPos pos2, int scale, int rotation, int slant, double duration) {
+    public AnimationFrameGenerator(FabricClientCommandSource source, BlockPos pos1, BlockPos pos2, int scale, int rotation, int slant, double duration) {
         // Set command context
         this.source = source;
 
-        // Set animation params
+        // Set frame generation params
         this.pos1 = pos1;
         this.pos2 = pos2;
         this.scale = scale;
@@ -47,8 +49,9 @@ public class AnimationHandler {
     }
 
     public void start() {
+        // Set state flags
         if (this.isRunning) {
-            LOGGER.warn("Animation already started.");
+            LOGGER.warn("Frame generation already started.");
             return;
         }
         this.isComplete = false;
@@ -58,33 +61,43 @@ public class AnimationHandler {
         // Register the tick step event to handle frame rendering
         TickStepEvent.TICK_STEP_EVENT.register((source, steps) -> {
             if (this.isRunning && this.frameExported) {
-                this.frameExported = false;
+                // Save the world to make sure all events are processes
                 Objects.requireNonNull(MinecraftClient.getInstance().getServer()).save(false, false, false);
+
+                // Render the next frame
+                this.frameExported = false;
                 MinecraftClient.getInstance().execute(this::renderNextFrame);
             }
 
             return ActionResult.PASS;
         });
 
-        // Start the animation by rendering the first frame
+        // Start the frame generation by rendering the first frame
+        source.sendFeedback(Text.literal("Starting frame generation...").formatted(Formatting.GREEN));
         this.renderNextFrame();
     }
 
     public void stop() {
+        if (!this.isRunning) {
+            LOGGER.warn("Frame generation not currently running");
+            return;
+        }
 
+        // Reset state flags
+        this.isRunning = false;
+        this.isComplete = true;
+
+        // Notify user that frame generation has been stopped
+        this.source.sendFeedback(Text.literal("Frame generation complete").formatted(Formatting.GREEN));
     }
 
 
     private void renderNextFrame() {
-        // Stop if animation is not running
+        // Stop frame generation is not running
         if (!this.isRunning) return;
 
-        // Render last frame of animation if duration exceeded
-        if (timeElapsed > duration) {
-            LOGGER.info("Animation completed. Rendering last frame...");
-            this.isRunning = false;
-            this.isComplete = true;
-        }
+        // Check if this is the last frame
+        boolean isLastFrame = timeElapsed >= duration;
 
         // Create renderable area from positions
         AreaRenderable area = AreaRenderable.of(this.pos1, this.pos2);
@@ -100,14 +113,22 @@ public class AnimationHandler {
             String frameTime = String.format("%.2f", timeElapsed);
             this.source.sendFeedback(Text.literal("Frame %d (%ss) rendered".formatted(frameNum, frameTime)).formatted(Formatting.YELLOW));
 
-            if (this.isComplete) {
-                this.source.sendFeedback(Text.literal("Frame generation complete").formatted(Formatting.GREEN));
+            // Move files to export directory
+            File newFile = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%03d.png".formatted(frameNum)).toFile();
+            try {
+                // Create export directory if it doesn't exist and move file there
+                newFile.getParentFile().mkdirs();
+                Files.move(file.toPath(), newFile.toPath());
+            } catch (Exception e) {
+                LOGGER.error("Failed to move exported frame to animation directory", e);
+            }
+            LOGGER.info("Frame {} ({}s) exported to {}", frameNum, frameTime, newFile.getAbsolutePath());
+
+            // Stop if this was the last frame
+            if (isLastFrame) {
+                this.stop();
                 return;
             }
-
-            // TODO: Move files to a specific folder for animation creation
-            LOGGER.info("Frame {} ({}s) exported to {}", frameNum, frameTime, file.getAbsolutePath());
-
 
             // Move to next frame (game tick)
             this.timeElapsed += 0.05;

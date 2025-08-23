@@ -3,6 +3,7 @@ package com.isoanimations.screens;
 import com.glisco.isometricrenders.render.AreaRenderable;
 import com.glisco.isometricrenders.render.RenderableDispatcher;
 import com.glisco.isometricrenders.util.ImageIO;
+import com.isoanimations.util.ExportConfig;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.util.Window;

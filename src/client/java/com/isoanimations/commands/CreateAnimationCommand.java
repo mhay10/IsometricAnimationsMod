@@ -2,7 +2,7 @@ package com.isoanimations.commands;
 
 
 import com.glisco.isometricrenders.mixin.access.DefaultPosArgumentAccessor;
-import com.isoanimations.util.AnimationHandler;
+import com.isoanimations.util.AnimationFrameGenerator;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -20,9 +20,6 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistratio
 
 // Test command: /animate -4 -51 5 5 -59 4 125 200 20 1.5
 public class CreateAnimationCommand {
-    private static AnimationHandler animationHandler = null;
-
-
     public static void registerCommand() {
         EVENT.register((dispatcher, registryAccess) ->
                 dispatcher.register(ClientCommandManager.literal("animate")
@@ -51,10 +48,11 @@ public class CreateAnimationCommand {
             return 0;
         }
 
-        // Render the first frame
-        animationHandler = new AnimationHandler(context.getSource(), pos1, pos2, scale, rotation, slant, duration);
-        animationHandler.start();
-        context.getSource().sendFeedback(Text.literal("Starting animation...").formatted(Formatting.GREEN));
+        // Create frames for the animation
+        AnimationFrameGenerator frameGenerator = new AnimationFrameGenerator(context.getSource(), pos1, pos2, scale, rotation, slant, duration);
+        frameGenerator.start();
+
+        // Combine frames into an animation
 
         return 1;
     }
