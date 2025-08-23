@@ -11,7 +11,6 @@ import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
-import org.lwjgl.opengl.GL11;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -42,14 +41,9 @@ public class AnimationFrameGenerator {
     private double timeElapsed = 0.0;
     private boolean isRunning = false;
     private boolean frameExported = false;
-    private boolean isComplete = false;
 
     // Completion callback
-    private CompletionCallback comletionCallback = null;
-
-    // Render synchronization
-    private final Object renderLock = new Object();
-    private boolean renderFinished = false;
+    private CompletionCallback completionCallback = null;
 
     public AnimationFrameGenerator(FabricClientCommandSource source, BlockPos pos1, BlockPos pos2, int scale, int rotation, int slant, double duration) {
         // Set command context
@@ -63,35 +57,11 @@ public class AnimationFrameGenerator {
         this.slant = slant;
         this.duration = duration;
 
-
-        // Clear previously exported frames or create export directory if it doesn't exist
-        try {
-            if (ExportConfig.FRAME_EXPORT_DIR.toFile().exists()) {
-                Files.walk(ExportConfig.FRAME_EXPORT_DIR)
-                        .filter(Files::isRegularFile)
-                        .map(java.nio.file.Path::toFile)
-                        .forEach(File::delete);
-            } else {
-                ExportConfig.FRAME_EXPORT_DIR.toFile().mkdirs();
-            }
-        } catch (Exception e) {
-            LOGGER.error("Failed to clear previous frames from animation export directory", e);
-        }
+        this.initExportDir();
     }
 
     public void setCompletionCallback(CompletionCallback callback) {
-        this.comletionCallback = callback;
-    }
-
-    private void waitForRenderCompletion() {
-        GL11.glFinish();
-
-        MinecraftClient.getInstance().getFramebuffer().beginWrite(true);
-
-        synchronized (renderLock) {
-            this.renderFinished = true;
-            this.renderLock.notifyAll();
-        }
+        this.completionCallback = callback;
     }
 
     public void start() {
@@ -100,30 +70,14 @@ public class AnimationFrameGenerator {
             LOGGER.warn("Frame generation already started.");
             return;
         }
-        this.isComplete = false;
         this.isRunning = true;
         this.timeElapsed = 0.0;
 
         // Register the tick step event to handle frame rendering
         TickStepEvent.TICK_STEP_EVENT.register((source, steps) -> {
             if (this.isRunning && this.frameExported) {
-                synchronized (this.renderLock) {
-                    this.renderFinished = false;
-                }
-
-                MinecraftClient.getInstance().execute(this::waitForRenderCompletion);
-
-                synchronized (this.renderLock) {
-                    long startTime = System.currentTimeMillis();
-                    while (!this.renderFinished && (System.currentTimeMillis() - startTime) < 5000) {
-                        try {
-                            renderLock.wait(100);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    }
-                }
+                // Make sure rendering is complete
+                RenderSystem.replayQueue();
 
                 // Save the world
                 Objects.requireNonNull(MinecraftClient.getInstance().getServer()).save(false, true, false);
@@ -149,18 +103,16 @@ public class AnimationFrameGenerator {
 
         // Reset state flags
         this.isRunning = false;
-        this.isComplete = true;
 
         // Notify user that frame generation has been stopped
         this.source.sendFeedback(Text.literal("Frame generation complete").formatted(Formatting.GREEN));
 
         // Invoke completion callback if set
-        if (this.comletionCallback != null) {
+        if (this.completionCallback != null) {
             long totalFrames = Math.round(this.duration * 20);
-            this.comletionCallback.onComplete(totalFrames);
+            this.completionCallback.onComplete(totalFrames);
         }
     }
-
 
     private void renderNextFrame() {
         // Stop frame generation is not running
@@ -203,5 +155,21 @@ public class AnimationFrameGenerator {
             }
         });
         MinecraftClient.getInstance().execute(() -> ScreenScheduler.schedule(screen));
+    }
+
+    private void initExportDir() {
+        // Clear previous frames from export directory if it exists otherwise create it
+        try {
+            if (ExportConfig.FRAME_EXPORT_DIR.toFile().exists()) {
+                Files.walk(ExportConfig.FRAME_EXPORT_DIR)
+                        .filter(Files::isRegularFile)
+                        .map(java.nio.file.Path::toFile)
+                        .forEach(File::delete);
+            } else {
+                ExportConfig.FRAME_EXPORT_DIR.toFile().mkdirs();
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to clear previous frames from animation export directory", e);
+        }
     }
 }
