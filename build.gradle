@@ -52,7 +52,7 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-	// Additional dependencies
+	// Mod dependencies
 	modImplementation "maven.modrinth:isometric-renders:${project.isometric_renders_version}"
 
 	modImplementation "io.wispforest:owo-lib:${project.owo_version}"

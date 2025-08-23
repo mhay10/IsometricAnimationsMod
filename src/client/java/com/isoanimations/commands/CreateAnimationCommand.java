@@ -2,6 +2,7 @@ package com.isoanimations.commands;
 
 
 import com.glisco.isometricrenders.mixin.access.DefaultPosArgumentAccessor;
+import com.isoanimations.util.AnimationAssembler;
 import com.isoanimations.util.AnimationFrameGenerator;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -11,7 +12,6 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.command.argument.DefaultPosArgument;
 import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 
@@ -48,11 +48,16 @@ public class CreateAnimationCommand {
             return 0;
         }
 
-        // Create frames for the animation
+        // Set callback to create animation after frame generation is complete
         AnimationFrameGenerator frameGenerator = new AnimationFrameGenerator(context.getSource(), pos1, pos2, scale, rotation, slant, duration);
-        frameGenerator.start();
+        frameGenerator.setCompletionCallback(totalFrames -> {
+            AnimationAssembler assembler = new AnimationAssembler(context.getSource(), totalFrames);
+            if (assembler.isFFmpegDetected())
+                assembler.createAnimation();
+        });
 
-        // Combine frames into an animation
+        // Start frame generation
+        frameGenerator.start();
 
         return 1;
     }
