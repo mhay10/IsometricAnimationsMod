@@ -47,6 +47,10 @@ public class AnimationFrameGenerator {
     // Completion callback
     private CompletionCallback comletionCallback = null;
 
+    // Render synchronization
+    private final Object renderLock = new Object();
+    private boolean renderFinished = false;
+
     public AnimationFrameGenerator(FabricClientCommandSource source, BlockPos pos1, BlockPos pos2, int scale, int rotation, int slant, double duration) {
         // Set command context
         this.source = source;
@@ -79,6 +83,17 @@ public class AnimationFrameGenerator {
         this.comletionCallback = callback;
     }
 
+    private void waitForRenderCompletion() {
+        GL11.glFinish();
+
+        MinecraftClient.getInstance().getFramebuffer().beginWrite(true);
+
+        synchronized (renderLock) {
+            this.renderFinished = true;
+            this.renderLock.notifyAll();
+        }
+    }
+
     public void start() {
         // Set state flags
         if (this.isRunning) {
@@ -92,30 +107,30 @@ public class AnimationFrameGenerator {
         // Register the tick step event to handle frame rendering
         TickStepEvent.TICK_STEP_EVENT.register((source, steps) -> {
             if (this.isRunning && this.frameExported) {
-                // Create sync function to ensure all rendering tasks are complete
-                MinecraftClient client = MinecraftClient.getInstance();
-                Runnable syncAndRender = () -> {
-                    // Make sure all OpenGL tasks are complete
-                    RenderSystem.assertOnRenderThread();
-                    GL11.glFinish();
+                synchronized (this.renderLock) {
+                    this.renderFinished = false;
+                }
 
-                    // Save the world to make sure all events are processes
-                    Objects.requireNonNull(client.getServer()).save(false, true, false);
+                MinecraftClient.getInstance().execute(this::waitForRenderCompletion);
 
-                    // Sync chunk and block updates
-                    client.world.getChunkManager().tick(() -> true, false);
-//                    client.worldRenderer.scheduleBlockRenders();
-                    RenderSystem.replayQueue();
+                synchronized (this.renderLock) {
+                    long startTime = System.currentTimeMillis();
+                    while (!this.renderFinished && (System.currentTimeMillis() - startTime) < 5000) {
+                        try {
+                            renderLock.wait(100);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                }
 
-                    // Render the next frame
-                    this.frameExported = false;
-                    client.execute(this::renderNextFrame);
-                };
+                // Save the world
+                Objects.requireNonNull(MinecraftClient.getInstance().getServer()).save(false, true, false);
 
-                if (RenderSystem.isOnRenderThread())
-                    syncAndRender.run();
-                else
-                    client.execute(syncAndRender);
+                // Render the next frame
+                this.frameExported = false;
+                MinecraftClient.getInstance().execute(this::renderNextFrame);
             }
 
             return ActionResult.PASS;
