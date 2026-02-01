@@ -1,6 +1,7 @@
 package com.isoanimations;
 
 import com.isoanimations.commands.CreateAnimationCommand;
+import com.isoanimations.commands.OpenAnimationsCommand;
 import net.fabricmc.api.ClientModInitializer;
 
 
@@ -13,5 +14,6 @@ public class IsometricAnimationsClient implements ClientModInitializer {
         // rendering.
         LOGGER.info("Isometric Animations Mod Initializing...");
         CreateAnimationCommand.registerCommand();
+        OpenAnimationsCommand.registerCommand();
     }
 }

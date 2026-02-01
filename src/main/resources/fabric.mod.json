@@ -34,8 +34,7 @@
 		"minecraft": "~1.21.4",
 		"java": ">=21",
 		"fabric-api": "*",
-		"isometric-renders": "*",
-		"owo": ">=0.11.3"
+		"isometric-renders": "*"
 	},
 	"recommends": {
 		"modmenu": "*"

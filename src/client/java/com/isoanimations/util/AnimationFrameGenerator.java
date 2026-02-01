@@ -2,20 +2,21 @@ package com.isoanimations.util;
 
 import com.glisco.isometricrenders.render.AreaRenderable;
 import com.glisco.isometricrenders.screen.ScreenScheduler;
-import com.isoanimations.events.TickStepEvent;
+import com.isoanimations.render.AnimationStateTracker;
+import com.isoanimations.render.EntityAnimationTracker;
 import com.isoanimations.screens.FrameRenderScreen;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.util.Objects;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.isoanimations.IsometricAnimations.LOGGER;
 
@@ -40,12 +41,33 @@ public class AnimationFrameGenerator {
     // Frame generation state
     private double timeElapsed = 0.0;
     private boolean isRunning = false;
-    private boolean frameExported = false;
+    private long currentFrameNumber = 0;
+    private int currentGameTick = 0;
+    private boolean waitingForTickStep = false;
+    private boolean renderingFrame = false; // Prevents concurrent frame rendering
+    private boolean needsInitialTick = true; // Flag to execute first tick before rendering
+    private boolean pendingStop = false;
 
     // Completion callback
     private CompletionCallback completionCallback = null;
 
-    public AnimationFrameGenerator(FabricClientCommandSource source, BlockPos pos1, BlockPos pos2, int scale, int rotation, int slant, double duration) {
+    // Animation state tracker
+    private final AnimationStateTracker stateTracker = AnimationStateTracker.getInstance();
+    private final EntityAnimationTracker entityTracker = EntityAnimationTracker.getInstance();
+
+    // Pending file moves for batching
+    private final List<File> pendingSources = new ArrayList<>();
+    private final List<File> pendingDests = new ArrayList<>();
+
+    // Static method to check if any AnimationFrameGenerator is running
+    private static volatile boolean anyRunning = false;
+
+    public static boolean isAnyRunning() {
+        return anyRunning;
+    }
+
+    public AnimationFrameGenerator(FabricClientCommandSource source, BlockPos pos1, BlockPos pos2, int scale,
+            int rotation, int slant, double duration) {
         // Set command context
         this.source = source;
 
@@ -71,55 +93,170 @@ public class AnimationFrameGenerator {
             return;
         }
         this.isRunning = true;
+        anyRunning = true;
         this.timeElapsed = 0.0;
+        this.currentFrameNumber = 0;
+        this.currentGameTick = 0;
+        this.needsInitialTick = true; // Need to execute first tick before rendering
 
-        // Register the tick step event to handle frame rendering
-        TickStepEvent.TICK_STEP_EVENT.register((source, steps) -> {
-            if (this.isRunning && this.frameExported) {
-                // Make sure rendering is complete
-                RenderSystem.replayQueue();
+        // Start tracking animation states in the rendering area
+        stateTracker.startTracking(pos1, pos2);
 
-                // Save the world
-                Objects.requireNonNull(MinecraftClient.getInstance().getServer()).save(false, true, false);
+        // Start the frame generation
+        long totalFrames = SubTickConfig.getTotalFrames(duration);
+        int totalTicks = SubTickConfig.getTotalTicks(duration);
+        source.sendFeedback(Text.literal(
+                "Starting frame generation: %d frames @ %d FPS (%d game ticks)"
+                        .formatted(totalFrames, SubTickConfig.getTargetFPS(), totalTicks))
+                .formatted(Formatting.GREEN));
 
-                // Render the next frame
-                this.frameExported = false;
-                MinecraftClient.getInstance().execute(this::renderNextFrame);
-            }
-
-            return ActionResult.PASS;
-        });
-
-        // Start the frame generation by rendering the first frame
-        source.sendFeedback(Text.literal("Starting frame generation").formatted(Formatting.GREEN));
+        // Start rendering immediately - we'll manage state manually
         this.renderNextFrame();
     }
 
     public void stop() {
+        // Perform any pending file moves
+        for (int i = 0; i < pendingSources.size(); i++) {
+            try {
+                Files.move(pendingSources.get(i).toPath(), pendingDests.get(i).toPath(),
+                        StandardCopyOption.REPLACE_EXISTING);
+                LOGGER.info("Frame moved to {} - COMPLETE", pendingDests.get(i).getAbsolutePath());
+            } catch (Exception e) {
+                LOGGER.error("Failed to move frame to {}", pendingDests.get(i).getAbsolutePath(), e);
+            }
+        }
+        pendingSources.clear();
+        pendingDests.clear();
+
         if (!this.isRunning) {
             LOGGER.warn("Frame generation not currently running");
             return;
         }
 
+        // Stop tracking animation states
+        stateTracker.stopTracking();
+        entityTracker.stopTracking();
+
         // Reset state flags
         this.isRunning = false;
+        anyRunning = false;
 
         // Notify user that frame generation has been stopped
-        this.source.sendFeedback(Text.literal("Frame generation complete").formatted(Formatting.GREEN));
+        this.source.sendFeedback(
+                Text.literal("Frame generation complete: %d frames rendered".formatted(currentFrameNumber))
+                        .formatted(Formatting.GREEN));
 
         // Invoke completion callback if set
         if (this.completionCallback != null) {
-            long totalFrames = Math.round(this.duration * 20);
-            this.completionCallback.onComplete(totalFrames);
+            this.completionCallback.onComplete(currentFrameNumber);
         }
     }
 
     private void renderNextFrame() {
-        // Stop frame generation is not running
-        if (!this.isRunning) return;
+        // Stop frame generation if not running
+        if (!this.isRunning)
+            return;
 
-        // Check if this is the last frame
-        boolean isLastFrame = timeElapsed >= duration;
+        // If we're already rendering a frame, don't start another one
+        if (renderingFrame) {
+            LOGGER.warn("Attempted to render frame {} while frame {} is still rendering - skipping",
+                    currentFrameNumber + 1, currentFrameNumber);
+            return;
+        }
+
+        // If we're waiting for a tick step to complete, don't render yet
+        if (waitingForTickStep)
+            return;
+
+        // If this is the very first frame, execute the initial tick first
+        if (needsInitialTick) {
+            LOGGER.info("Executing initial tick (tick 0) before rendering any frames");
+            needsInitialTick = false;
+            waitingForTickStep = true;
+
+            MinecraftClient.getInstance().execute(() -> {
+                // Prepare for tick advance (saves current state as previous)
+                stateTracker.prepareTickAdvance();
+
+                // Execute the initial tick
+                CommandRunner.runCommand("/tick step 1");
+
+                // Wait for tick to process
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(50);
+                    } catch (InterruptedException e) {
+                        LOGGER.error("Interrupted while waiting for initial tick", e);
+                    }
+
+                    MinecraftClient.getInstance().execute(() -> {
+                        // Capture new state after tick
+                        stateTracker.captureAfterTick();
+
+                        waitingForTickStep = false;
+                        LOGGER.info("Initial tick (tick 0) completed, starting frame rendering");
+                        this.renderNextFrame();
+                    });
+                }).start();
+            });
+            return;
+        }
+
+        // Mark that we're now rendering a frame
+        renderingFrame = true;
+
+        // Calculate which game tick we're in and the interpolation factor
+        int targetTick = SubTickConfig.getTickAtTime(timeElapsed);
+        float tickDelta = SubTickConfig.getTickDelta(timeElapsed);
+
+        // Check if we need to advance to a new game tick BEFORE rendering this frame
+        if (targetTick > currentGameTick) {
+            // We need to advance the game tick BEFORE rendering this frame
+            LOGGER.info(
+                    "Need to advance from tick {} to tick {} BEFORE rendering frame {} (time={}) - executing /tick step",
+                    currentGameTick, targetTick, currentFrameNumber, timeElapsed);
+            waitingForTickStep = true;
+            renderingFrame = false; // Release the lock since we're not rendering yet
+
+            // Execute tick step asynchronously and continue rendering after it completes
+            MinecraftClient.getInstance().execute(() -> {
+                // STEP 1: Save current state as previous BEFORE the tick executes
+                stateTracker.prepareTickAdvance();
+
+                // STEP 2: Execute the tick step (world state changes)
+                CommandRunner.runCommand("/tick step 1");
+
+                // Wait for the tick to fully process before continuing
+                // This ensures the world state is updated and ready for rendering
+                new Thread(() -> {
+                    try {
+                        // Wait for tick to process - needs enough time for world updates
+                        Thread.sleep(50);
+                    } catch (InterruptedException e) {
+                        LOGGER.error("Interrupted while waiting for tick step", e);
+                    }
+
+                    MinecraftClient.getInstance().execute(() -> {
+                        // STEP 3: Capture new state AFTER the tick has executed
+                        stateTracker.captureAfterTick();
+                        entityTracker.captureAfterTick();
+
+                        currentGameTick = targetTick;
+                        waitingForTickStep = false;
+                        LOGGER.info("Tick advanced to {}, now rendering frame {}", currentGameTick, currentFrameNumber);
+                        this.renderNextFrame();
+                    });
+                }).start();
+            });
+            return; // Don't continue rendering until tick has advanced
+        }
+
+        // Check if this is the last frame - render up to and including the final time
+        long totalFrames = SubTickConfig.getTotalFrames(duration);
+        boolean isLastFrame = currentFrameNumber >= totalFrames - 1;
+
+        LOGGER.info("=== Rendering frame {}/{}: time={}, tick={}, delta={}, isLast={} ===",
+                currentFrameNumber + 1, totalFrames, timeElapsed, targetTick, tickDelta, isLastFrame);
 
         // Create renderable area from positions
         AreaRenderable area = AreaRenderable.of(this.pos1, this.pos2);
@@ -127,34 +264,87 @@ public class AnimationFrameGenerator {
         area.properties().rotation.set(this.rotation);
         area.properties().slant.set(this.slant);
 
-        // Create and schedule the frame
-        FrameRenderScreen screen = new FrameRenderScreen(area);
+        // Create and schedule the frame with proper tickDelta
+        FrameRenderScreen screen = new FrameRenderScreen(area, tickDelta, this.pos1, this.pos2);
         screen.setExportCallback(file -> {
             // Notify player of render progress
-            long frameNum = Math.round(timeElapsed * 20);
-            String frameTime = String.format("%.2f", timeElapsed);
-            this.source.sendFeedback(Text.literal("Frame %d (%ss) rendered".formatted(frameNum, frameTime)).formatted(Formatting.YELLOW));
+            String frameTime = String.format("%.3f", timeElapsed);
+            String tickInfo = String.format("tick %d, delta %.2f", targetTick, tickDelta);
+            this.source.sendFeedback(Text.literal(
+                    "Frame %d/%d (%ss, %s) rendered"
+                            .formatted(currentFrameNumber + 1, SubTickConfig.getTotalFrames(duration), frameTime,
+                                    tickInfo))
+                    .formatted(Formatting.YELLOW));
 
-            // Move files to export directory
-            File newFile = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%05d.png".formatted(frameNum)).toFile();
-            try {
-                Files.move(file.toPath(), newFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            } catch (Exception e) {
-                LOGGER.error("Failed to move exported frame to animation directory", e);
+            // Periodic memory cleanup to prevent slowdown on long renders
+            if (currentFrameNumber > 0 && currentFrameNumber % 100 == 0) {
+                LOGGER.info("Performing memory cleanup at frame {}", currentFrameNumber);
+                stateTracker.trimMemory();
             }
-            LOGGER.info("Frame {} ({}s) exported to {}", frameNum, frameTime, newFile.getAbsolutePath());
 
-            // Stop if this was the last frame otherwise continue to next frame
+            // Queue file for batched move
+            File newFile = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%05d.png".formatted(currentFrameNumber))
+                    .toFile();
+            pendingSources.add(file);
+            pendingDests.add(newFile);
+
+            // Check if we should perform batched moves
+            if (pendingSources.size() >= 500 || isLastFrame) {
+                for (int i = 0; i < pendingSources.size(); i++) {
+                    try {
+                        Files.move(pendingSources.get(i).toPath(), pendingDests.get(i).toPath(),
+                                StandardCopyOption.REPLACE_EXISTING);
+                        LOGGER.info("Frame moved to {} - COMPLETE", pendingDests.get(i).getAbsolutePath());
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to move frame to {}", pendingDests.get(i).getAbsolutePath(), e);
+                    }
+                }
+                pendingSources.clear();
+                pendingDests.clear();
+            }
+
+            // Stop if this was the last frame, otherwise continue to next frame
             if (isLastFrame) {
-                this.stop();
+                renderingFrame = false; // Clear the lock before stopping
+                // Instead of calling stop() here, set a flag to stop after export is fully
+                // complete
+                pendingStop = true;
             } else {
-                // Move to next frame (game tick)
-                this.timeElapsed += 0.05;
-                this.frameExported = true;
-                MinecraftClient.getInstance().execute(() -> CommandRunner.runCommand("/tick step"));
+                // Move to next frame time
+                this.timeElapsed += SubTickConfig.getFrameInterval();
+                this.currentFrameNumber++;
+
+                // Calculate next frame's tick to log transition info
+                int nextFrameTick = SubTickConfig.getTickAtTime(timeElapsed);
+                if (nextFrameTick > targetTick) {
+                    LOGGER.info("Next frame {} will be in tick {} (current was tick {})",
+                            currentFrameNumber, nextFrameTick, targetTick);
+                }
+
+                // Clear the rendering flag BEFORE scheduling next frame
+                renderingFrame = false;
+
+                // Render next frame immediately - tick advancement is now handled at the start
+                // of renderNextFrame
+                MinecraftClient.getInstance().execute(this::renderNextFrame);
             }
         });
-        MinecraftClient.getInstance().execute(() -> ScreenScheduler.schedule(screen));
+        // Schedule the screen and hook into its close event
+        MinecraftClient.getInstance().execute(() -> {
+            ScreenScheduler.schedule(screen);
+            // Monitor for screen close to perform stop if needed
+            new Thread(() -> {
+                while (!screen.isClosed()) {
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException ignored) {
+                    }
+                }
+                if (pendingStop) {
+                    MinecraftClient.getInstance().execute(this::stop);
+                }
+            }).start();
+        });
     }
 
     private void initExportDir() {

@@ -1,36 +1,35 @@
 package com.isoanimations.util;
 
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
-import java.io.FileWriter;
+import org.bytedeco.javacv.FFmpegFrameRecorder;
+import org.bytedeco.javacv.Frame;
+import org.bytedeco.javacv.Java2DFrameConverter;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.File;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.List;
 
 import static com.isoanimations.IsometricAnimations.LOGGER;
 
 public class AnimationAssembler {
     // Command context
-    private FabricClientCommandSource source = null;
+    private final FabricClientCommandSource source;
 
     // Animation export params
-    private long frameCount;
-    private final int frameRate = 20;
+    private final long frameCount;
     private final Path outputFilePath;
-    private final Path inputFilePath = ExportConfig.ANIMATION_EXPORT_DIR.resolve("frames.txt");
-
-    // FFmpeg detection state
-    private boolean ffmpegDetected = false;
 
     public AnimationAssembler(FabricClientCommandSource source, long frameCount) {
         // Set command context
         this.source = source;
-
-        // Detect FFmpeg on initialization
-        this.ffmpegDetected = this.detectFFmpeg();
 
         // Set animation export params
         this.frameCount = frameCount;
@@ -47,100 +46,97 @@ public class AnimationAssembler {
         this.outputFilePath = ExportConfig.ANIMATION_EXPORT_DIR.resolve(outputFilename);
 
         // Create export directories if they don't exist
-        if (!outputFilePath.getParent().toFile().exists())
-            outputFilePath.getParent().toFile().mkdirs();
-    }
-
-    public void createAnimation() {
-        // Ensure FFmpeg is detected before proceeding
-        if (!this.ffmpegDetected) {
-            LOGGER.error("FFmpeg not detected, cannot create animation.");
-            return;
-        }
-
-        // Create input file for FFmpeg
-        this.createInputFile();
-
-        // Build and execute FFmpeg command
-        ArrayList<String> command = new ArrayList<>(List.of((new String[]{
-                "ffmpeg",
-                "-r", "20",
-                "-safe", "0",
-                "-f", "concat", "-i", inputFilePath.toFile().getAbsolutePath(),
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",
-                "-y", outputFilePath.toFile().getAbsolutePath()
-        })));
-        try {
-            // Execute FFmpeg command
-            Process process = new ProcessBuilder(command)
-                    .redirectError(ProcessBuilder.Redirect.INHERIT)
-                    .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-                    .start();
-            process.onExit().join();
-
-            // Notify user of completion
-            LOGGER.info("Animation created successfully: {}", outputFilePath.toAbsolutePath());
-            source.sendFeedback(Text.literal("Animation created successfully: " + outputFilePath.getFileName()).formatted(Formatting.GREEN));
-
-            // Clean up temporary input file
-            this.cleanupInputFile();
-        } catch (Exception e) {
-            LOGGER.error("Error executing FFmpeg command to create animation.", e);
-            source.sendError(Text.literal("Error creating animation: could not execute FFmpeg command"));
-        }
-    }
-
-    private void cleanupInputFile() {
-        try {
-            if (inputFilePath.toFile().exists()) {
-                inputFilePath.toFile().delete();
-                LOGGER.info("Deleted temporary FFmpeg input file: {}", inputFilePath.toAbsolutePath());
+        if (!outputFilePath.getParent().toFile().exists()) {
+            if (!outputFilePath.getParent().toFile().mkdirs()) {
+                LOGGER.error("Failed to create animation export directory");
             }
-        } catch (Exception e) {
-            LOGGER.error("Error deleting temporary FFmpeg input file.", e);
         }
     }
 
-    private void createInputFile() {
-        try {
-            FileWriter framesFile = new FileWriter(inputFilePath.toFile().getAbsolutePath());
-            for (int frame = 0; frame <= frameCount; frame++) {
-                // Get frame file path and format for FFmpeg
-                String framePath = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%05d.png".formatted(frame))
-                        .toAbsolutePath().toString()
-                        .replace("\\", "/").replace("'", "'\\''");
+    public void createAnimation() throws InterruptedException {
+        // Notify user that animation creation is starting
+        this.source.sendFeedback(Text.literal("Creating animation from frames. This may take a while...").formatted(Formatting.YELLOW));
 
-                // Write frame entry to input file
-                framesFile.write("file '%s'\n".formatted(framePath));
-                LOGGER.info("Added frame {}/{} to FFmpeg input file: {}", frame, this.frameCount, framePath);
+        // Start animation creation in a new thread
+        new Thread(() -> {
+            // Build path to frame sequence
+            String framePattern = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%05d.png").toFile().getAbsolutePath();
+            int fps = SubTickConfig.getTargetFPS();
+
+            try {
+                LOGGER.info("Starting JavaCV FFmpegFrameRecorder to create animation from {} frames at {} FPS", frameCount, fps);
+
+                // Read the first frame to get width/height
+                File firstFrame = new File(String.format(framePattern, 0));
+                if (!firstFrame.exists()) {
+                    firstFrame = new File(String.format(framePattern, 1));
+                }
+                if (!firstFrame.exists()) {
+                    throw new IllegalStateException("No frame images found to assemble animation.");
+                }
+                BufferedImage sampleImage = ImageIO.read(firstFrame);
+                int width = sampleImage.getWidth();
+                int height = sampleImage.getHeight();
+
+
+                try (FFmpegFrameRecorder recorder = new FFmpegFrameRecorder(outputFilePath.toFile(), width, height);
+                     Java2DFrameConverter converter = new Java2DFrameConverter()) {
+                    recorder.setFormat("mp4");
+                    recorder.setVideoCodec(org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_ID_H264);
+                    recorder.setFrameRate(fps);
+                    recorder.setPixelFormat(org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_YUV420P);
+                    recorder.setVideoOption("threads", "0");
+
+                    recorder.start();
+
+                    for (int i = 0; i < frameCount; i++) {
+                        File frameFile = new File(String.format(framePattern, i));
+                        if (!frameFile.exists()) {
+                            LOGGER.warn("Frame file missing: {} (skipping)", frameFile.getAbsolutePath());
+                            continue;
+                        }
+                        BufferedImage img = ImageIO.read(frameFile);
+                        if (img == null) {
+                            LOGGER.warn("Could not read image: {} (skipping)", frameFile.getAbsolutePath());
+                            continue;
+                        }
+                        // Convert to TYPE_3BYTE_BGR to ensure correct color order
+                        if (img.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+                            BufferedImage bgrImg = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+                            bgrImg.getGraphics().drawImage(img, 0, 0, null);
+                            img = bgrImg;
+                        }
+                        // No channel swap, rely on JavaCV preset
+                        Frame frame = converter.convert(img);
+                        recorder.record(frame);
+                    }
+
+                    recorder.stop();
+                }
+
+                // Notify user of completion
+                LOGGER.info("Animation created successfully: {}", outputFilePath.toAbsolutePath());
+                source.sendFeedback(Text.literal("Animation created: " + outputFilePath.getFileName()).formatted(Formatting.GREEN));
+
+                // Add clickable message to open the animations folder
+                sendOpenFolderMessage();
+            } catch (Exception e) {
+                LOGGER.error("Error creating animation with JavaCV FFmpegFrameRecorder.", e);
+                source.sendError(Text.literal("Error creating animation: could not encode video"));
             }
-            framesFile.close();
-        } catch (Exception e) {
-            LOGGER.error("Error creating frames input file for FFmpeg.", e);
-            source.sendError(Text.literal("Error creating animation: could not create frames input file"));
-        }
+        }).start();
     }
 
-    public boolean isFFmpegDetected() {
-        return this.ffmpegDetected;
-    }
+    private void sendOpenFolderMessage() {
+        // Create clickable text that opens the animations folder
+        MutableText message = Text.literal("[Click here to open animations folder]")
+                .formatted(Formatting.GOLD, Formatting.UNDERLINE)
+                .styled(style -> style
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/openanimations"))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                Text.literal("Open the animations folder").formatted(Formatting.YELLOW)))
+                );
 
-    private boolean detectFFmpeg() {
-        try {
-            // Check if FFmpeg is installed by running 'ffmpeg -version' command
-            Process process = new ProcessBuilder("ffmpeg", "-version").redirectError(ProcessBuilder.Redirect.DISCARD).start();
-            process.onExit().join();
-
-            // Read the output to confirm FFmpeg is working
-            String processOutput = new String(process.getInputStream().readAllBytes());
-            LOGGER.info("FFmpeg detected. Version: {}", processOutput.split(" ")[2]);
-            return true;
-        } catch (Exception e) {
-            // FFmpeg not found or error occurred
-            LOGGER.error("FFmpeg not found. Please ensure FFmpeg is installed and added to your system PATH.");
-            source.sendError(Text.literal("Error creating animation: FFmpeg not found"));
-            return false;
-        }
+        source.sendFeedback(message);
     }
 }

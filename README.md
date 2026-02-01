@@ -2,7 +2,7 @@
 # Isometric Animations Mod
 
 A Minecraft mod that captures sections of your world and generates isometric animations,
-perfect for showcasing redstone contraptions or dynmic scenes in you Minecraft world.
+perfect for showcasing redstone contraptions or dynamic scenes in your Minecraft world.
 
 [Watch Example Render Video](https://youtube.com/shorts/_vldU3FVRaE?feature=share)
 
@@ -13,24 +13,37 @@ perfect for showcasing redstone contraptions or dynmic scenes in you Minecraft w
 - Adjustable scale, rotation, slant and duration settings
 - Export animations as files for easy sharing
 
-## Dependnencies
+## Dependencies
 
 This mod requires the following dependencies to be installed:
 
 - [Fabric API](https://fabricmc.net/use/) - Essential modding library for Fabric
-- [Isometric Animations](https://modrinth.com/mod/isometric-renders) - Core rendering library
-- [owo-lib](https://modrinth.com/mod/owo-lib) - Dependency of Isometric Animations
+- [Isometric Renders](https://modrinth.com/mod/isometric-renders) - Core rendering library
+- [owo-lib](https://modrinth.com/mod/owo-lib) - Dependency of Isometric Renders
 
 Make sure all dependencies are installed and compatible with your Minecraft version.
 
-You all need to have [FFmpeg](https://ffmpeg.org/download.html) installed and available in your system PATH for video encoding.
+You also need to have [FFmpeg](https://ffmpeg.org/download.html) installed and available in your system PATH for video encoding.
 
 ## Usage
+
+### Getting Help
+
+To see command usage information in-game, use:
+```
+/animate help
+```
+
+**Note:** The `/animate` command is a **client-side command**. This means:
+- It will NOT appear in `/help` (which only lists server commands)
+- You can use it in singleplayer or multiplayer
+- Use Tab completion for parameter suggestions
+- Type `/animate help` to see the full command syntax
 
 ### Command Structure
 
 ```
-/animate <pos1> <pos2> <scale> <rotation> <slant> <duration>
+/animate <pos1> <pos2> <scale> <rotation> <slant> <duration> [fps]
 ````
 
 ### Parameters
@@ -41,6 +54,7 @@ You all need to have [FFmpeg](https://ffmpeg.org/download.html) installed and av
 - `<rotation>`: Rotation angle in degrees (0 - 360)
 - `<slant>`: Slant angle in degrees (-90 - 90)
 - `<duration>`: Duration of the animation in seconds
+- `[fps]`: **OPTIONAL** - Frames per second (20-1000, default: 1000)
 
 ### Example Command
 
