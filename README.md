@@ -1,4 +1,3 @@
-
 # Isometric Animations Mod
 
 A Minecraft mod that captures sections of your world and generates isometric animations,
@@ -23,18 +22,20 @@ This mod requires the following dependencies to be installed:
 
 Make sure all dependencies are installed and compatible with your Minecraft version.
 
-You also need to have [FFmpeg](https://ffmpeg.org/download.html) installed and available in your system PATH for video encoding.
+Video encoding is performed using JavaCV (org.bytedeco's FFmpeg bindings) declared as a project dependency. No external FFmpeg binary is required on the user's PATH — the native bindings are provided by the `javacv-platform` dependency included in the mod. If assembly fails at runtime, check the game log for JavaCV/FFmpeg errors and ensure the correct JavaCV platform artifacts are available for your OS/architecture.
 
 ## Usage
 
 ### Getting Help
 
 To see command usage information in-game, use:
+
 ```
 /animate help
 ```
 
 **Note:** The `/animate` command is a **client-side command**. This means:
+
 - It will NOT appear in `/help` (which only lists server commands)
 - You can use it in singleplayer or multiplayer
 - Use Tab completion for parameter suggestions
@@ -44,7 +45,7 @@ To see command usage information in-game, use:
 
 ```
 /animate <pos1> <pos2> <scale> <rotation> <slant> <duration> [fps]
-````
+```
 
 ### Parameters
 
@@ -58,8 +59,9 @@ To see command usage information in-game, use:
 
 ### Example Command
 
-This command captures a region from `(-4, -51, 5)` to `(5, -59, 4)` with 
+This command captures a region from `(-4, -51, 5)` to `(5, -59, 4)` with
 a scale of 125, rotation of 200 degrees, slant of 20 degrees, and duration of 1.5 seconds.
+
 ```
 /animate -4 -51 5 5 -59 4 125 200 20 1.5
 ```
@@ -84,7 +86,7 @@ Generated animations and frames are saved in your Minecraft instance directory u
 ### Common Issues
 
 - **Command not recognized:** Ensure the mod is correctly installed and loaded.
-- **FFmpeg not found:** Make sure FFmpeg is installed and added to your system PATH
+- **Animation assembly failed:** Check the game logs for JavaCV/FFmpeg errors. JavaCV native binaries are bundled via the `javacv-platform` dependency; if you see native load failures, ensure you're running a supported OS/architecture and that the mod's dependencies were not stripped by your launcher or modpack.
 - **Output files not found:** Check the `.minecraft/isoanimations/` directory for generated files.
 
 ### Known Issues
