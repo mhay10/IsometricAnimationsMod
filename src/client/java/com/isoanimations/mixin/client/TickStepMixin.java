@@ -19,4 +19,11 @@ public class TickStepMixin {
 		if (result == ActionResult.FAIL)
 			cir.setReturnValue(0); // Cancel the command
 	}
+
+	// Invoke completion event at the end of executeStep so listeners can act after
+	// ticks processed
+	@Inject(at = @At("TAIL"), method = "executeStep")
+	private static void onTickStepComplete(ServerCommandSource source, int steps, CallbackInfoReturnable<Integer> cir) {
+		com.isoanimations.events.TickStepCompleteEvent.TICK_STEP_COMPLETE_EVENT.invoker().onTickComplete(source, steps);
+	}
 }

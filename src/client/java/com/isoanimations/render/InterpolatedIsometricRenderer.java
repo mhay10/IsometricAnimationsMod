@@ -4,11 +4,7 @@ import com.glisco.isometricrenders.render.AreaRenderable;
 import com.glisco.isometricrenders.render.RenderableDispatcher;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.render.*;
 import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.util.math.MatrixStack;
-import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
 
 import java.util.function.Consumer;
@@ -27,8 +23,7 @@ public class InterpolatedIsometricRenderer {
     public static NativeImage renderWithInterpolation(
             AreaRenderable renderable,
             float tickDelta,
-            int size
-    ) {
+            int size) {
         InterpolatedRenderContext context = InterpolatedRenderContext.get();
         MinecraftClient client = MinecraftClient.getInstance();
 
@@ -80,8 +75,7 @@ public class InterpolatedIsometricRenderer {
             AreaRenderable renderable,
             float aspectRatio,
             float tickDelta,
-            Consumer<Matrix4fStack> matrixTransform
-    ) {
+            Consumer<Matrix4fStack> matrixTransform) {
         InterpolatedRenderContext context = InterpolatedRenderContext.get();
 
         try {
@@ -90,11 +84,10 @@ public class InterpolatedIsometricRenderer {
 
             // Let the isometric-renders library do the rendering
             RenderableDispatcher.drawIntoActiveFramebuffer(
-                renderable,
-                aspectRatio,
-                tickDelta,
-                matrixTransform
-            );
+                    renderable,
+                    aspectRatio,
+                    tickDelta,
+                    matrixTransform);
 
         } finally {
             // Always deactivate context
@@ -102,4 +95,3 @@ public class InterpolatedIsometricRenderer {
         }
     }
 }
-

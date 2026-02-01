@@ -1,6 +1,5 @@
 package com.isoanimations.util;
 
-import com.glisco.isometricrenders.util.ExportPathSpec;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.nio.file.Path;

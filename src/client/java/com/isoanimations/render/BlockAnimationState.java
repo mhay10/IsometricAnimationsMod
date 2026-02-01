@@ -3,7 +3,6 @@ package com.isoanimations.render;
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
-import org.joml.Vector3f;
 
 /**
  * Represents the animation state of a block at a specific point in time.

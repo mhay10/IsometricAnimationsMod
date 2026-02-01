@@ -10,13 +10,16 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import com.isoanimations.events.TickStepCompleteEvent;
+import net.minecraft.util.ActionResult;
 
 import static com.isoanimations.IsometricAnimations.LOGGER;
 
@@ -47,6 +50,25 @@ public class AnimationFrameGenerator {
     private boolean renderingFrame = false; // Prevents concurrent frame rendering
     private boolean needsInitialTick = true; // Flag to execute first tick before rendering
     private boolean pendingStop = false;
+    // Expected target used when waiting for tick completion (>=0 to set
+    // currentGameTick)
+    private volatile int expectedTargetTick = -1;
+
+    // Static list of generators waiting for tick-completion notifications
+    private static final CopyOnWriteArrayList<AnimationFrameGenerator> TICK_WAITERS = new CopyOnWriteArrayList<>();
+
+    // Register a single global listener that notifies waiting generators when /tick
+    // step completes
+    static {
+        TickStepCompleteEvent.TICK_STEP_COMPLETE_EVENT.register((serverSource, steps) -> {
+            // Iterate over a snapshot to avoid concurrent modification issues
+            AnimationFrameGenerator[] snapshot = TICK_WAITERS.toArray(new AnimationFrameGenerator[0]);
+            for (AnimationFrameGenerator g : snapshot) {
+                g.onTickStepCompleted(steps);
+            }
+            return ActionResult.SUCCESS;
+        });
+    }
 
     // Completion callback
     private CompletionCallback completionCallback = null;
@@ -54,6 +76,27 @@ public class AnimationFrameGenerator {
     // Animation state tracker
     private final AnimationStateTracker stateTracker = AnimationStateTracker.getInstance();
     private final EntityAnimationTracker entityTracker = EntityAnimationTracker.getInstance();
+
+    // Called from the global tick-completion listener when /tick step completes
+    private void onTickStepCompleted(int steps) {
+        // Remove ourselves - if we weren't waiting any more ignore
+        if (!TICK_WAITERS.remove(this))
+            return;
+        final int setTo = this.expectedTargetTick;
+        this.expectedTargetTick = -1;
+
+        MinecraftClient.getInstance().execute(() -> {
+            // Capture new state AFTER the tick has executed
+            stateTracker.captureAfterTick();
+            entityTracker.captureAfterTick();
+
+            if (setTo >= 0)
+                this.currentGameTick = setTo;
+            this.waitingForTickStep = false;
+            LOGGER.info("Tick advanced to {}, now rendering frame {}", this.currentGameTick, this.currentFrameNumber);
+            this.renderNextFrame();
+        });
+    }
 
     // Pending file moves for batching
     private final List<File> pendingSources = new ArrayList<>();
@@ -181,23 +224,10 @@ public class AnimationFrameGenerator {
                 // Execute the initial tick
                 CommandRunner.runCommand("/tick step 1");
 
-                // Wait for tick to process
-                new Thread(() -> {
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException e) {
-                        LOGGER.error("Interrupted while waiting for initial tick", e);
-                    }
-
-                    MinecraftClient.getInstance().execute(() -> {
-                        // Capture new state after tick
-                        stateTracker.captureAfterTick();
-
-                        waitingForTickStep = false;
-                        LOGGER.info("Initial tick (tick 0) completed, starting frame rendering");
-                        this.renderNextFrame();
-                    });
-                }).start();
+                // Wait for tick to process - register as a waiter so we get notified when tick
+                // step completes
+                this.expectedTargetTick = -1; // initial tick does not drive currentGameTick
+                TICK_WAITERS.add(this);
             });
             return;
         }
@@ -211,14 +241,23 @@ public class AnimationFrameGenerator {
 
         // Check if we need to advance to a new game tick BEFORE rendering this frame
         if (targetTick > currentGameTick) {
+            // Clamp advancement so we only move at most one tick per render to avoid
+            // burst-stepping
+            int advanceTo = Math.min(targetTick, currentGameTick + 1);
+            if (advanceTo < targetTick) {
+                LOGGER.warn("Generator falling behind: requested tick {} but clamping to {} (current={})",
+                        targetTick, advanceTo, currentGameTick);
+            }
+
             // We need to advance the game tick BEFORE rendering this frame
             LOGGER.info(
-                    "Need to advance from tick {} to tick {} BEFORE rendering frame {} (time={}) - executing /tick step",
-                    currentGameTick, targetTick, currentFrameNumber, timeElapsed);
+                    "Need to advance from tick {} to tick {} (using {}) BEFORE rendering frame {} (time={}) - executing /tick step",
+                    currentGameTick, targetTick, advanceTo, currentFrameNumber, timeElapsed);
             waitingForTickStep = true;
             renderingFrame = false; // Release the lock since we're not rendering yet
 
             // Execute tick step asynchronously and continue rendering after it completes
+            final int finalAdvanceTo = advanceTo; // capture for lambda
             MinecraftClient.getInstance().execute(() -> {
                 // STEP 1: Save current state as previous BEFORE the tick executes
                 stateTracker.prepareTickAdvance();
@@ -226,27 +265,10 @@ public class AnimationFrameGenerator {
                 // STEP 2: Execute the tick step (world state changes)
                 CommandRunner.runCommand("/tick step 1");
 
-                // Wait for the tick to fully process before continuing
-                // This ensures the world state is updated and ready for rendering
-                new Thread(() -> {
-                    try {
-                        // Wait for tick to process - needs enough time for world updates
-                        Thread.sleep(50);
-                    } catch (InterruptedException e) {
-                        LOGGER.error("Interrupted while waiting for tick step", e);
-                    }
-
-                    MinecraftClient.getInstance().execute(() -> {
-                        // STEP 3: Capture new state AFTER the tick has executed
-                        stateTracker.captureAfterTick();
-                        entityTracker.captureAfterTick();
-
-                        currentGameTick = targetTick;
-                        waitingForTickStep = false;
-                        LOGGER.info("Tick advanced to {}, now rendering frame {}", currentGameTick, currentFrameNumber);
-                        this.renderNextFrame();
-                    });
-                }).start();
+                // Wait for the tick to fully process - register as a waiter; set expected to
+                // the clamped value
+                this.expectedTargetTick = finalAdvanceTo;
+                TICK_WAITERS.add(this);
             });
             return; // Don't continue rendering until tick has advanced
         }
