@@ -30,7 +30,7 @@ Video encoding is performed using JavaCV (org.bytedeco's FFmpeg bindings) declar
 
 To see command usage information in-game, use:
 
-```
+```minecraft
 /animate help
 ```
 
@@ -43,7 +43,7 @@ To see command usage information in-game, use:
 
 ### Command Structure
 
-```
+```minecraft
 /animate <pos1> <pos2> <scale> <rotation> <slant> <duration> [fps]
 ```
 
@@ -62,7 +62,7 @@ To see command usage information in-game, use:
 This command captures a region from `(-4, -51, 5)` to `(5, -59, 4)` with
 a scale of 125, rotation of 200 degrees, slant of 20 degrees, and duration of 1.5 seconds.
 
-```
+```minecraft
 /animate -4 -51 5 5 -59 4 125 200 20 1.5
 ```
 
@@ -70,7 +70,7 @@ a scale of 125, rotation of 200 degrees, slant of 20 degrees, and duration of 1.
 
 Generated animations and frames are saved in your Minecraft instance directory under:
 
-```
+```minecraft
 +-- .minecraft/
 |   +-- isoanimations/
 |   |   +-- animations/
