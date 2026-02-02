@@ -3,15 +3,12 @@
 A Minecraft mod that captures sections of your world and generates isometric animations,
 perfect for showcasing redstone contraptions or dynamic scenes in your Minecraft world.
 
-<video width="320" height="240" controls>
-  <source type="video/mp4" src="example.mp4" />
-</video>
 
 ## Features
 
 - Capture a rectangular area of your Minecraft world
 - Generate smooth-ish isometric animations
-- Adjustable scale, rotation, slant and duration settings
+- Adjustable scale, rotation, slant, duration, and fps settings
 - Export animations as files for easy sharing
 
 ## Dependencies
@@ -24,7 +21,8 @@ This mod requires the following dependencies to be installed:
 
 Make sure all dependencies are installed and compatible with your Minecraft version.
 
-Video encoding is performed using JavaCV (org.bytedeco's FFmpeg bindings) declared as a project dependency. No external FFmpeg binary is required on the user's PATH — the native bindings are provided by the `javacv-platform` dependency included in the mod. If assembly fails at runtime, check the game log for JavaCV/FFmpeg errors and ensure the correct JavaCV platform artifacts are available for your OS/architecture.
+Video encoding is performed using an internal implementation of JavaCV, so no external FFMpeg binary is required. If assembly fails at runtime, check the game log for JavaCV/FFMpeg errors and open an issue. More info on posting issues can be found below.
+
 
 ## Usage
 
@@ -39,7 +37,7 @@ To see command usage information in-game, use:
 **Note:** The `/animate` command is a **client-side command**. This means:
 
 - It will NOT appear in `/help` (which only lists server commands)
-- You can use it in singleplayer or multiplayer
+- You can use it in singleplayer and maybe multiplayer (depends on tick permissions)
 - Use Tab completion for parameter suggestions
 - Type `/animate help` to see the full command syntax
 
@@ -62,12 +60,13 @@ To see command usage information in-game, use:
 ### Example Command
 
 This command captures a region from `(-4, -51, 5)` to `(5, -59, 4)` with
-a scale of 125, rotation of 200 degrees, slant of 20 degrees, and duration of 1.5 seconds.
+a scale of 125, rotation of 200 degrees, slant of 20 degrees, and duration of 1.5 seconds at 1000 frames per second
 
 ```minecraft
-/animate -4 -51 5 5 -59 4 125 200 20 1.5
+/animate -4 -51 5 5 -59 4 125 200 20 1.5 1000
 ```
 
+  
 ## Output Files
 
 Generated animations and frames are saved in your Minecraft instance directory under:
@@ -83,13 +82,20 @@ Generated animations and frames are saved in your Minecraft instance directory u
 |   |       +-- ...
 ```
 
+### Example Videos
+
+- [Example 1](examples/example1.mp4)  
+- [Example 2](examples/example2.mp4)  
+- [Example 3](examples/example3.mp4)
+
+
 ## Troubleshooting
 
 ### Common Issues
 
-- **Command not recognized:** Ensure the mod is correctly installed and loaded.
-- **Animation assembly failed:** Check the game logs for JavaCV/FFmpeg errors. JavaCV native binaries are bundled via the `javacv-platform` dependency; if you see native load failures, ensure you're running a supported OS/architecture and that the mod's dependencies were not stripped by your launcher or modpack.
-- **Output files not found:** Check the `.minecraft/isoanimations/` directory for generated files.
+- **Command not recognized:** Ensure the mod is correctly installed and loaded
+- **Animation assembly failed:** Check the game logs for JavaCV/FFmpeg errors. JavaCV native binaries are bundled via the `javacv-platform` dependency; if you see native load failures, ensure you're running a supported OS/architecture and that the mod's dependencies were not stripped by your launcher or modpack
+- **Output files not found:** Check the `.minecraft/isoanimations/` directory for generated files
 
 ### Known Issues
 
