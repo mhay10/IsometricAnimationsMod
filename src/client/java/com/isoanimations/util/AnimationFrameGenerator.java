@@ -332,12 +332,6 @@ public class AnimationFrameGenerator {
                                     tickInfo))
                     .formatted(Formatting.YELLOW));
 
-            // Periodic memory cleanup to prevent slowdown on long renders
-            if (currentFrameNumber > 0 && currentFrameNumber % 100 == 0) {
-                LOGGER.info("Performing memory cleanup at frame {}", currentFrameNumber);
-                stateTracker.trimMemory();
-            }
-
             // Queue file for batched move
             File newFile = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%05d.png".formatted(currentFrameNumber))
                     .toFile();

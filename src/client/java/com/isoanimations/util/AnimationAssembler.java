@@ -10,6 +10,7 @@ import net.minecraft.util.Formatting;
 import org.bytedeco.javacv.FFmpegFrameRecorder;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
+import org.bytedeco.ffmpeg.global.*;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -41,8 +42,7 @@ public class AnimationAssembler {
                 now.get(Calendar.DAY_OF_MONTH),
                 now.get(Calendar.HOUR_OF_DAY),
                 now.get(Calendar.MINUTE),
-                now.get(Calendar.SECOND)
-        );
+                now.get(Calendar.SECOND));
         this.outputFilePath = ExportConfig.ANIMATION_EXPORT_DIR.resolve(outputFilename);
 
         // Create export directories if they don't exist
@@ -55,7 +55,8 @@ public class AnimationAssembler {
 
     public void createAnimation() throws InterruptedException {
         // Notify user that animation creation is starting
-        this.source.sendFeedback(Text.literal("Creating animation from frames. This may take a while...").formatted(Formatting.YELLOW));
+        this.source.sendFeedback(
+                Text.literal("Creating animation from frames. This may take a while...").formatted(Formatting.YELLOW));
 
         // Start animation creation in a new thread
         new Thread(() -> {
@@ -64,7 +65,8 @@ public class AnimationAssembler {
             int fps = SubTickConfig.getTargetFPS();
 
             try {
-                LOGGER.info("Starting JavaCV FFmpegFrameRecorder to create animation from {} frames at {} FPS", frameCount, fps);
+                LOGGER.info("Starting JavaCV FFmpegFrameRecorder to create animation from {} frames at {} FPS",
+                        frameCount, fps);
 
                 // Read the first frame to get width/height
                 File firstFrame = new File(String.format(framePattern, 0));
@@ -78,13 +80,12 @@ public class AnimationAssembler {
                 int width = sampleImage.getWidth();
                 int height = sampleImage.getHeight();
 
-
                 try (FFmpegFrameRecorder recorder = new FFmpegFrameRecorder(outputFilePath.toFile(), width, height);
-                     Java2DFrameConverter converter = new Java2DFrameConverter()) {
+                        Java2DFrameConverter converter = new Java2DFrameConverter()) {
                     recorder.setFormat("mp4");
-                    recorder.setVideoCodec(org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_ID_H264);
+                    recorder.setVideoCodec(avcodec.AV_CODEC_ID_H264);
                     recorder.setFrameRate(fps);
-                    recorder.setPixelFormat(org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_YUV420P);
+                    recorder.setPixelFormat(avutil.AV_PIX_FMT_YUV420P);
                     recorder.setVideoOption("threads", "0");
 
                     recorder.start();
@@ -102,7 +103,8 @@ public class AnimationAssembler {
                         }
                         // Convert to TYPE_3BYTE_BGR to ensure correct color order
                         if (img.getType() != BufferedImage.TYPE_3BYTE_BGR) {
-                            BufferedImage bgrImg = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+                            BufferedImage bgrImg = new BufferedImage(img.getWidth(), img.getHeight(),
+                                    BufferedImage.TYPE_3BYTE_BGR);
                             bgrImg.getGraphics().drawImage(img, 0, 0, null);
                             img = bgrImg;
                         }
@@ -116,7 +118,8 @@ public class AnimationAssembler {
 
                 // Notify user of completion
                 LOGGER.info("Animation created successfully: {}", outputFilePath.toAbsolutePath());
-                source.sendFeedback(Text.literal("Animation created: " + outputFilePath.getFileName()).formatted(Formatting.GREEN));
+                source.sendFeedback(
+                        Text.literal("Animation created: " + outputFilePath.getFileName()).formatted(Formatting.GREEN));
 
                 // Add clickable message to open the animations folder
                 sendOpenFolderMessage();
@@ -134,8 +137,7 @@ public class AnimationAssembler {
                 .styled(style -> style
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/openanimations"))
                         .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                Text.literal("Open the animations folder").formatted(Formatting.YELLOW)))
-                );
+                                Text.literal("Open the animations folder").formatted(Formatting.YELLOW))));
 
         source.sendFeedback(message);
     }

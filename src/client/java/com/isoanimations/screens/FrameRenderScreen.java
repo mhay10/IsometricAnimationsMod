@@ -211,9 +211,8 @@ public class FrameRenderScreen extends Screen {
 
     @Override
     public void close() {
-        // Stop entity and block state tracking when screen closes
-        EntityAnimationTracker.getInstance().stopTracking();
-        AnimationStateTracker.getInstance().stopTracking();
+        // Do NOT stop global tracking here; the generator is responsible for
+        // stopping trackers when the entire render job completes.
         closed = true;
         super.close();
     }

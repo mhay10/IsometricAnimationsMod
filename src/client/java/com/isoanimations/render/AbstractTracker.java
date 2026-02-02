@@ -11,8 +11,8 @@ import static com.isoanimations.IsometricAnimations.LOGGER;
  * to previous.
  */
 public abstract class AbstractTracker {
-    protected Box trackingArea = null;
-    private boolean tracking = false;
+    protected volatile Box trackingArea = null;
+    private volatile boolean tracking = false;
 
     /**
      * Start tracking the provided area. Clears any prior state and captures the
