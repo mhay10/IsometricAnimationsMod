@@ -180,19 +180,53 @@ public class AnimationFrameGenerator {
         stateTracker.stopTracking();
         entityTracker.stopTracking();
 
+        // Remove ourselves from any tick waiters in case we were waiting
+        TICK_WAITERS.remove(this);
+
+        // Trim memory held by trackers aggressively since we're stopping
+        try {
+            stateTracker.trimMemory(true); // aggressive - safe at stop
+        } catch (Exception e) {
+            LOGGER.warn("Failed to trim memory in state tracker", e);
+        }
+        try {
+            entityTracker.trimMemory(true);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to trim memory in entity tracker", e);
+        }
+        System.gc();
+
+        // Capture references for notification and callback
+        final FabricClientCommandSource localSource = this.source;
+        final CompletionCallback localCallback = this.completionCallback;
+
         // Reset state flags
         this.isRunning = false;
         anyRunning = false;
 
         // Notify user that frame generation has been stopped
-        this.source.sendFeedback(
-                Text.literal("Frame generation complete: %d frames rendered".formatted(currentFrameNumber))
-                        .formatted(Formatting.GREEN));
+        if (localSource != null) {
+            try {
+                localSource.sendFeedback(
+                        Text.literal("Frame generation complete: %d frames rendered".formatted(currentFrameNumber))
+                                .formatted(Formatting.GREEN));
+            } catch (Exception e) {
+                LOGGER.warn("Failed to send completion feedback", e);
+            }
+        }
 
         // Invoke completion callback if set
-        if (this.completionCallback != null) {
-            this.completionCallback.onComplete(currentFrameNumber);
+        if (localCallback != null) {
+            try {
+                localCallback.onComplete(currentFrameNumber);
+            } catch (Exception e) {
+                LOGGER.warn("Completion callback threw", e);
+            }
         }
+
+        // Clear heavy references to allow GC
+        this.source = null;
+        this.completionCallback = null;
     }
 
     private void renderNextFrame() {

@@ -56,12 +56,38 @@ public class AnimationStateTracker extends AbstractTracker {
     }
 
     /**
-     * Force garbage collection of state maps (call periodically during long
-     * renders)
+     * Trim memory used by stored states.
+     * Default (no-arg) performs a conservative trim suitable for long-running
+     * renders: it prunes sub-tick history but preserves the previous tick state
+     * required for interpolation.
      */
     public void trimMemory() {
-        // Only keep the current tick states, clear previous tick
-        previousTickStates.clear();
+        trimMemory(false);
+    }
+
+    /**
+     * Trim memory, with an option for aggressive cleanup.
+     * If aggressive==true, previous tick state will also be cleared. Use
+     * aggressive mode when stopping rendering completely.
+     */
+    public void trimMemory(boolean aggressive) {
+        // Prune sub-tick history in current tick states - keep only the most
+        // recent sub-tick state per position to preserve interpolation data
+        for (Map.Entry<BlockPos, List<SubTickState>> entry : currentTickStates.entrySet()) {
+            List<SubTickState> states = entry.getValue();
+            if (states.size() > 1) {
+                SubTickState last = states.get(states.size() - 1);
+                states.clear();
+                states.add(last);
+            }
+        }
+
+        // Only clear previous tick states when doing an aggressive trim or when
+        // tracking has stopped; previous tick states are necessary for
+        // interpolation within the current tick
+        if (aggressive || !isTracking()) {
+            previousTickStates.clear();
+        }
 
         // Suggest garbage collection
         System.gc();

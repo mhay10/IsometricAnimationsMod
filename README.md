@@ -3,7 +3,9 @@
 A Minecraft mod that captures sections of your world and generates isometric animations,
 perfect for showcasing redstone contraptions or dynamic scenes in your Minecraft world.
 
-[Watch Example Render Video](https://youtube.com/shorts/_vldU3FVRaE?feature=share)
+<video width="320" height="240" controls>
+  <source type="video/mp4" src="example.mp4" />
+</video>
 
 ## Features
 

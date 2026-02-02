@@ -3,6 +3,7 @@ package com.isoanimations.screens;
 import com.glisco.isometricrenders.render.AreaRenderable;
 import com.glisco.isometricrenders.util.ImageIO;
 import com.isoanimations.render.EntityAnimationTracker;
+import com.isoanimations.render.AnimationStateTracker;
 import com.isoanimations.render.InterpolatedIsometricRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -10,6 +11,7 @@ import net.minecraft.client.util.Window;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.WorldChunk;
+import net.minecraft.client.texture.NativeImage;
 
 import java.io.File;
 import java.util.function.Consumer;
@@ -80,12 +82,26 @@ public class FrameRenderScreen extends Screen {
 
             LOGGER.info("Rendering frame with interpolation at tickDelta={}", tickDelta);
 
-            ImageIO.save(
-                    InterpolatedIsometricRenderer.renderWithInterpolation(this.renderable, tickDelta, exportSize),
-                    this.renderable.exportPath()).whenComplete((file, throwable) -> {
-                        exportCallback.accept(file);
-                        exportComplete = true;
-                    });
+            // Render into a NativeImage and ensure we close the image buffer after saving
+            // to free native memory
+            final NativeImage image = InterpolatedIsometricRenderer.renderWithInterpolation(this.renderable, tickDelta,
+                    exportSize);
+            ImageIO.save(image, this.renderable.exportPath()).whenComplete((file, throwable) -> {
+                try {
+                    if (throwable != null) {
+                        LOGGER.error("Failed to save rendered frame", throwable);
+                    }
+                    exportCallback.accept(file);
+                } finally {
+                    // Always close the NativeImage to release native memory
+                    try {
+                        image.close();
+                    } catch (Exception e) {
+                        LOGGER.warn("Failed to close NativeImage", e);
+                    }
+                    exportComplete = true;
+                }
+            });
         }
 
         // Close the screen when export is complete
@@ -195,8 +211,9 @@ public class FrameRenderScreen extends Screen {
 
     @Override
     public void close() {
-        // Stop entity tracking when screen closes
+        // Stop entity and block state tracking when screen closes
         EntityAnimationTracker.getInstance().stopTracking();
+        AnimationStateTracker.getInstance().stopTracking();
         closed = true;
         super.close();
     }

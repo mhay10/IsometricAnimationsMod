@@ -99,6 +99,27 @@ public class EntityAnimationTracker extends AbstractTracker {
     }
 
     /**
+     * Conservative trim: preserve previous positions while freeing transient
+     * data. Aggressive trim clears previous state and is safe to call when
+     * stopping tracking.
+     */
+    public void trimMemory() {
+        trimMemory(false);
+    }
+
+    public void trimMemory(boolean aggressive) {
+        // No large histories to prune here, but we clear previous state if
+        // aggressive or if tracking stopped
+        if (aggressive || !isTracking()) {
+            previousTickPositions.clear();
+            previousTickVelocities.clear();
+        }
+
+        // Suggest GC
+        System.gc();
+    }
+
+    /**
      * Get the interpolated position for an entity at a given tickDelta
      * 
      * @param entityId  Entity UUID
