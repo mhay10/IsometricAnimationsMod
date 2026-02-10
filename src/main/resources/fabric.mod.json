@@ -1,42 +1,40 @@
 {
-	"schemaVersion": 1,
-	"id": "isometric-animations",
-	"version": "${version}",
-	"name": "Isometric Animations",
-	"description": "Creates high-quality animations rendered in an isometric style",
-	"authors": [
-		"mhay10"
-	],
-	"contact": {
-		"issues": "https://github.com/mhay10/IsometricAnimationsMod/issues",
-		"sources": "https://github.com/mhay10/IsometricAnimationsMod"
-	},
-	"license": "CC0-1.0",
-	"icon": "assets/isometric-animations/icon.png",
-	"environment": "*",
-	"entrypoints": {
-		"main": [
-			"com.isoanimations.IsometricAnimations"
-		],
-		"client": [
-			"com.isoanimations.IsometricAnimationsClient"
-		]
-	},
-	"mixins": [
-		"isometric-animations.mixins.json",
-		{
-			"environment": "client",
-			"config": "isometric-animations.client.mixins.json"
-		}
-	],
-	"depends": {
-		"fabricloader": ">=0.17.2",
-		"minecraft": "~1.21.4",
-		"java": ">=21",
-		"fabric-api": "*",
-		"isometric-renders": "*"
-	},
-	"recommends": {
-		"modmenu": "*"
-	}
+  "schemaVersion": 1,
+  "id": "isometric-animations",
+  "version": "${version}",
+  "name": "Isometric Animations",
+  "description": "This is an example description! Tell everyone what your mod is about!",
+  "authors": [
+    "Me!"
+  ],
+  "contact": {
+    "homepage": "https://fabricmc.net/",
+    "sources": "https://github.com/FabricMC/fabric-example-mod"
+  },
+  "license": "CC0-1.0",
+  "icon": "assets/isometric-animations/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.isoanimations.IsometricAnimations"
+    ],
+    "client": [
+      "com.isoanimations.IsometricAnimationsClient"
+    ]
+  },
+  "mixins": [
+    "isometric-animations.mixins.json",
+    {
+      "config": "isometric-animations.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "accessWidener": "isoanimations.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.18.4",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*",
+    "flashback": ">=0.39.1"
+  }
 }
