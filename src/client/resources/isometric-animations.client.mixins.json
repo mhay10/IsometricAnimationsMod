@@ -3,6 +3,7 @@
 	"package": "com.isoanimations.mixin.client",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
+      "LevelRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

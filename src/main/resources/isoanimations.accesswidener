@@ -1,2 +1,3 @@
 accessWidener v1 named
 
+accessible field net/minecraft/client/renderer/LevelRenderer visibleSections Lit/unimi/dsi/fastutil/objects/ObjectArrayList;
