@@ -19,32 +19,39 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(LevelRenderer.class)
 public class LevelRendererMixin {
-    @Shadow
-    @Final
-    public ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections;
-
-    @Inject(method = "renderLevel", at = @At("HEAD"))
-    private void renderLevel(CallbackInfo ci) {
+    @Inject(method = "addCloudsPass", at = @At("HEAD"), cancellable = true)
+    private void addCloudsPass(CallbackInfo ci) {
+        // Disable clouds when animation region is active
         AABB activeRegion = AnimationManager.getActiveRegion();
+        if (activeRegion != null) {
+            ci.cancel();
+        }
+    }
 
-        // Filter sections to only ones intersecting active region
-        visibleSections.removeIf(section -> {
-            if (activeRegion != null) {
-                // Get section details
-                BlockPos origin = section.getRenderOrigin();
-                int sectionSize = 16; // Minecraft sections are 16x16x16
+    @Inject(method = "addWeatherPass", at = @At("HEAD"), cancellable = true)
+    private void addWeatherPass(CallbackInfo ci) {
+        // Disable weather when animation region is active
+        AABB activeRegion = AnimationManager.getActiveRegion();
+        if (activeRegion != null) {
+            ci.cancel();
+        }
+    }
 
-                // Remove section if does not intersect with active region
-                return !activeRegion.intersects(
-                        origin.getX(), origin.getY(), origin.getZ(),
-                        origin.getX() + sectionSize, origin.getY() + sectionSize, origin.getZ() + sectionSize
-                );
-            }
+    @Inject(method = "addSkyPass", at = @At("HEAD"), cancellable = true)
+    private void addSkyPass(CallbackInfo ci) {
+        // Disable sky when animation region is active
+        AABB activeRegion = AnimationManager.getActiveRegion();
+        if (activeRegion != null) {
+            ci.cancel();
+        }
+    }
 
-            // If no active region, render all sections
-            return false;
-        });
-
-
+    @Inject(method = "addParticlesPass", at = @At("HEAD"), cancellable = true)
+    private void addParticlesPass(CallbackInfo ci) {
+        // Disable particles when animation region is active
+        AABB activeRegion = AnimationManager.getActiveRegion();
+        if (activeRegion != null) {
+            ci.cancel();
+        }
     }
 }

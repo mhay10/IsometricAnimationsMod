@@ -2,7 +2,6 @@ package com.isoanimations.util;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.phys.AABB;
 
@@ -20,7 +19,7 @@ public class AnimationManager {
     private static long endTick;
 
     public static void createAnimation(BlockPos pos1, BlockPos pos2, int durationTicks) {
-        clearPrevAnimation();
+        clearAnimation();
 
         // Setup region states
         AnimationManager.pos1 = pos1;
@@ -33,11 +32,13 @@ public class AnimationManager {
         endTick = startTick + durationTicks;
     }
 
-    public static void clearPrevAnimation() {
+    public static void clearAnimation() {
+        activeRegion = null;
         pos1 = null;
         pos2 = null;
+        startTick = -1;
+        endTick = -1;
         durationTicks = 0;
-        activeRegion = null;
     }
 
     public static void startAnimation() {
@@ -51,6 +52,7 @@ public class AnimationManager {
 
     public static void finishAnimation() {
         animationFinished.set(true);
+//        clearAnimation();
     }
 
     public static BlockPos getPos1() {

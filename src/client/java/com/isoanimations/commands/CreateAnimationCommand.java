@@ -17,9 +17,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3d;
 
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.isoanimations.IsometricAnimations.LOGGER;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT;
 
 public class CreateAnimationCommand {
@@ -50,7 +48,8 @@ public class CreateAnimationCommand {
     }
 
     public static int clearAnimation(CommandContext<FabricClientCommandSource> context) {
-        AnimationManager.clearPrevAnimation();
+        AnimationManager.clearAnimation();
+        context.getSource().getClient().execute(context.getSource().getClient().levelRenderer::allChanged);
         context.getSource().sendFeedback(Component.literal("Cleared active animation region and stopped animation."));
         return 1;
     }
@@ -77,7 +76,7 @@ public class CreateAnimationCommand {
         // Create new animation region and set render transformations
         AnimationManager.createAnimation(blockPos1, blockPos2, durationTicks);
         positionPlayer(context);
-//        source.getClient().executeBlocking(source.getClient().levelRenderer::allChanged);
+        source.getClient().execute(source.getClient().levelRenderer::allChanged);
 
         // Start recording animation
         ClientTickEvents.EndTick animationEvent = (client) -> {

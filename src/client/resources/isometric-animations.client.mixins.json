@@ -3,6 +3,9 @@
   "package": "com.isoanimations.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "BlockEntityRenderDispatcherMixin",
+    "EntityRenderDispatcherMixin",
+    "FogRendererMixin",
     "LevelRendererMixin",
     "RenderSectionRegionMixin"
   ],
