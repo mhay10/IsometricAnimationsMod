@@ -13,8 +13,6 @@ public class RenderManager {
     private static int scale = 100;
 
     public static Vector3d getRenderPosition(BlockPos pos1, BlockPos pos2) {
-
-
         // Get center position of region
         Vector3d center = getCenterPositionVec3d(pos1, pos2);
 

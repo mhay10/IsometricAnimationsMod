@@ -2,6 +2,7 @@ package com.isoanimations;
 
 import com.isoanimations.commands.CreateAnimationCommand;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 
 import static com.isoanimations.IsometricAnimations.LOGGER;
 
@@ -12,5 +13,9 @@ public class IsometricAnimationsClient implements ClientModInitializer {
 
         // Register client-side commands
         CreateAnimationCommand.registerCommand();
+
+//        WorldRenderEvents.BEFORE_TRANSLUCENT.register(context -> {
+//
+//        });
     }
 }

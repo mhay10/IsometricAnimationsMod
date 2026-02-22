@@ -2,15 +2,18 @@ package com.isoanimations.util;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.phys.AABB;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AnimationManager {
-    private static BoundingBox activeRegion = null;
+    private static AABB activeRegion = null;
     private static BlockPos pos1;
     private static BlockPos pos2;
     private static AtomicBoolean isAnimating = new AtomicBoolean(false);
+    private static AtomicBoolean animationFinished = new AtomicBoolean(false);
 
     private static int durationTicks;
     private static long startTick;
@@ -22,7 +25,7 @@ public class AnimationManager {
         // Setup region states
         AnimationManager.pos1 = pos1;
         AnimationManager.pos2 = pos2;
-        activeRegion = BoundingBox.fromCorners(pos1, pos2);
+        activeRegion = AABB.of(BoundingBox.fromCorners(pos1, pos2));
 
         // Setup time states
         AnimationManager.durationTicks = durationTicks;
@@ -39,10 +42,15 @@ public class AnimationManager {
 
     public static void startAnimation() {
         isAnimating.set(true);
+        animationFinished.set(false);
     }
 
     public static void stopAnimation() {
         isAnimating.set(false);
+    }
+
+    public static void finishAnimation() {
+        animationFinished.set(true);
     }
 
     public static BlockPos getPos1() {
@@ -53,13 +61,16 @@ public class AnimationManager {
         return pos2;
     }
 
-    public static BoundingBox getActiveRegion() {
+    public static AABB getActiveRegion() {
         return activeRegion;
     }
 
-
     public static boolean isAnimating() {
         return isAnimating.get();
+    }
+
+    public static boolean isAnimationFinished() {
+        return animationFinished.get();
     }
 
     public static int getDurationTicks() {

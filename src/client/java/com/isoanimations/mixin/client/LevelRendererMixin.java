@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -24,21 +25,20 @@ public class LevelRendererMixin {
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
     private void renderLevel(CallbackInfo ci) {
-        BoundingBox activeRegion = AnimationManager.getActiveRegion();
+        AABB activeRegion = AnimationManager.getActiveRegion();
 
         // Filter sections to only ones intersecting active region
         visibleSections.removeIf(section -> {
             if (activeRegion != null) {
-                // Create section bounding box
+                // Get section details
                 BlockPos origin = section.getRenderOrigin();
                 int sectionSize = 16; // Minecraft sections are 16x16x16
-                BoundingBox sectionBox = new BoundingBox(
+
+                // Remove section if does not intersect with active region
+                return !activeRegion.intersects(
                         origin.getX(), origin.getY(), origin.getZ(),
                         origin.getX() + sectionSize, origin.getY() + sectionSize, origin.getZ() + sectionSize
                 );
-
-                // Remove section if does not intersect with active region
-                return !activeRegion.intersects(sectionBox);
             }
 
             // If no active region, render all sections
