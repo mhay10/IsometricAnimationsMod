@@ -14,7 +14,7 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.WorldCoordinates;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Vector3d;
+import org.joml.Vector3f;
 
 import java.util.Objects;
 
@@ -32,8 +32,8 @@ public class CreateAnimationCommand {
                                 .then(ClientCommandManager.argument("pos1", BlockPosArgument.blockPos())
                                         .then(ClientCommandManager.argument("pos2", BlockPosArgument.blockPos())
                                                 .then(ClientCommandManager.argument("scale", IntegerArgumentType.integer(100, 500))
-                                                        .then(ClientCommandManager.argument("skew", IntegerArgumentType.integer(-90, 90))
-                                                                .then(ClientCommandManager.argument("rotation", IntegerArgumentType.integer(0, 360))
+                                                        .then(ClientCommandManager.argument("pitch", IntegerArgumentType.integer(0, 360))
+                                                                .then(ClientCommandManager.argument("yaw", IntegerArgumentType.integer(-90, 90))
                                                                         .executes(CreateAnimationCommand::positionPlayer)))))))
 
                         // Create new animation with specifies arguments
@@ -41,9 +41,9 @@ public class CreateAnimationCommand {
                                 .then(ClientCommandManager.argument("pos1", BlockPosArgument.blockPos())
                                         .then(ClientCommandManager.argument("pos2", BlockPosArgument.blockPos())
                                                 .then(ClientCommandManager.argument("scale", IntegerArgumentType.integer(100, 500))
-                                                        .then(ClientCommandManager.argument("skew", IntegerArgumentType.integer(-90, 90))
-                                                                .then(ClientCommandManager.argument("rotation", IntegerArgumentType.integer(0, 360))
-                                                                        .then(ClientCommandManager.argument("duration", DoubleArgumentType.doubleArg(0))
+                                                        .then(ClientCommandManager.argument("pitch", IntegerArgumentType.integer(0, 360))
+                                                                .then(ClientCommandManager.argument("yaw", IntegerArgumentType.integer(-90, 90))
+                                                                        .then(ClientCommandManager.argument("duration", DoubleArgumentType.doubleArg(0.1))
                                                                                 .executes(CreateAnimationCommand::newAnimation))))))))));
     }
 
@@ -112,8 +112,8 @@ public class CreateAnimationCommand {
         WorldCoordinates pos1 = context.getArgument("pos1", WorldCoordinates.class);
         WorldCoordinates pos2 = context.getArgument("pos2", WorldCoordinates.class);
         int scale = context.getArgument("scale", Integer.class);
-        int skew = context.getArgument("skew", Integer.class);
-        int rotation = context.getArgument("rotation", Integer.class);
+        int pitch = context.getArgument("pitch", Integer.class);
+        int yaw = context.getArgument("yaw", Integer.class);
 
         // Convert arguments to more usable forms
         var blockPos1 = pos1.getBlockPos(Objects.requireNonNull(source.getClient().getSingleplayerServer()).createCommandSourceStack()); // wtf is this
@@ -121,20 +121,24 @@ public class CreateAnimationCommand {
 
         // Set render transformations
         RenderManager.setScale(scale);
-        RenderManager.setSkew(skew);
-        RenderManager.setRotation(rotation);
+        RenderManager.setPitch(pitch);
+        RenderManager.setYaw(yaw);
 
         // Teleport player to render position
-        Vector3d renderPos = RenderManager.getRenderPosition(blockPos1, blockPos2);
-        Vec3 centerPos = RenderManager.getCenterPosition(blockPos1, blockPos2);
-        CommandRunner.runCommand("/tp @s %s %s %s".formatted((float) renderPos.x, (float) renderPos.y, (float) renderPos.z));
+        Vector3f renderPos = RenderManager.getRenderPosition(blockPos1, blockPos2, source.getPlayer().position(), 30);
+        Vector3f centerPos = RenderManager.getCenterPosition(blockPos1, blockPos2);
+        CommandRunner.runCommand("/tp @s %s %s %s".formatted(renderPos.x, renderPos.y, renderPos.z));
 
-        // Make sure world is loaded at render position before proceeding
+        // Make sure world is loaded
         source.getClient().getSingleplayerServer().saveEverything(false, true, false);
 
-        // Make player face center of region
+        // Position player on client thread
         source.getClient().execute(() -> {
-            source.getClient().player.lookAt(EntityAnchorArgument.Anchor.EYES, centerPos);
+            // Look at center of animation region
+            source.getClient().player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(centerPos));
+
+            // Try to prevent camera clipping region
+            CommandRunner.runCommand("/tp @s ~ ~0.5 ~");
         });
 
         return 1;
