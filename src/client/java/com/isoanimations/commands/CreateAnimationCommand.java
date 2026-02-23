@@ -148,6 +148,5 @@ public class CreateAnimationCommand {
         // TODO: Figure out how to export replay as video
 
         source.sendFeedback(Component.literal("Exporting now (not really tho)..."));
-
     }
 }

@@ -7,6 +7,7 @@
     "BlockEntityRenderDispatcherMixin",
     "EntityRenderDispatcherMixin",
     "FogRendererMixin",
+    "WindowMixin",
     "LevelRendererMixin",
     "RenderSectionRegionMixin"
   ],
