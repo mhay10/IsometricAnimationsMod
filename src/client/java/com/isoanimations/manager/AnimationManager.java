@@ -1,4 +1,4 @@
-package com.isoanimations.util;
+package com.isoanimations.manager;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -48,11 +48,6 @@ public class AnimationManager {
 
     public static void stopAnimation() {
         isAnimating.set(false);
-    }
-
-    public static void finishAnimation() {
-        animationFinished.set(true);
-//        clearAnimation();
     }
 
     public static BlockPos getPos1() {

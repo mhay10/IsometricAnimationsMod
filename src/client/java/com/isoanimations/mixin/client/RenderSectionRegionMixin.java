@@ -1,6 +1,6 @@
 package com.isoanimations.mixin.client;
 
-import com.isoanimations.util.AnimationManager;
+import com.isoanimations.manager.AnimationManager;
 import net.minecraft.client.renderer.chunk.RenderSectionRegion;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;

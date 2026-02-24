@@ -1,6 +1,6 @@
 package com.isoanimations.mixin.client;
 
-import com.isoanimations.util.AnimationManager;
+import com.isoanimations.manager.AnimationManager;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.world.entity.Entity;

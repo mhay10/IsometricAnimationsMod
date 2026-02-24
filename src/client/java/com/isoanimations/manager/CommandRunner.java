@@ -1,4 +1,4 @@
-package com.isoanimations.util;
+package com.isoanimations.manager;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;

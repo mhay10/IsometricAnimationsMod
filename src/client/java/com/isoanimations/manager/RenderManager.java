@@ -1,4 +1,4 @@
-package com.isoanimations.util;
+package com.isoanimations.manager;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;

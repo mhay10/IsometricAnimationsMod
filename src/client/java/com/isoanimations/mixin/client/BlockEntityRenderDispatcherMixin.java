@@ -1,6 +1,6 @@
 package com.isoanimations.mixin.client;
 
-import com.isoanimations.util.AnimationManager;
+import com.isoanimations.manager.AnimationManager;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer.CrumblingOverlay;

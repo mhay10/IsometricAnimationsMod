@@ -1,6 +1,6 @@
 package com.isoanimations.mixin.client;
 
-import com.isoanimations.util.AnimationManager;
+import com.isoanimations.manager.AnimationManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.world.phys.AABB;

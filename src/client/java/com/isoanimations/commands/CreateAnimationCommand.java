@@ -1,14 +1,13 @@
 package com.isoanimations.commands;
 
-import com.isoanimations.util.AnimationManager;
-import com.isoanimations.util.CommandRunner;
-import com.isoanimations.util.RenderManager;
+import com.isoanimations.manager.*;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.WorldCoordinates;
@@ -17,6 +16,9 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT;
 
@@ -73,31 +75,79 @@ public class CreateAnimationCommand {
         var blockPos2 = pos2.getBlockPos(Objects.requireNonNull(source.getClient().getSingleplayerServer()).createCommandSourceStack());
         int durationTicks = (int) Math.ceil(duration * 20); // Convert seconds to ticks
 
+        // Store player position for later reset
+        Vec3 origPlayerPos = source.getPlayer().position();
+        float xRot = source.getPlayer().getXRot();
+        float yRot = source.getPlayer().getYRot();
+
+        source.sendFeedback(
+                Component.literal("Creating animation with a duration of %.2f seconds (%d ticks)...".formatted(duration, durationTicks))
+                        .withStyle(ChatFormatting.GREEN)
+        );
+
         // Create new animation region and set render transformations
         AnimationManager.createAnimation(blockPos1, blockPos2, durationTicks);
         positionPlayer(context);
         source.getClient().execute(source.getClient().levelRenderer::allChanged);
 
-        // Start recording animation
-        ClientTickEvents.EndTick animationEvent = (client) -> {
-            // Wait for recorder to be ready before stepping
-            if (!AnimationManager.isAnimating() && !AnimationManager.isAnimationFinished()) {
-                // TODO: Add short delay before starting animation to ensure player is positioned and all chunks are loaded
+        // Initialize PBOs for frame capture
+        int width = source.getClient().getWindow().getWidth();
+        int height = source.getClient().getWindow().getHeight();
+        FrameManager.initPBOs(width, height);
 
-                AnimationManager.startAnimation();
-                CommandRunner.runCommand("/tick step %d".formatted(durationTicks));
+        // Initialize output directories
+        FrameExportManager.init();
+
+        // Start recording animation
+        AtomicBoolean waitingForReload = new AtomicBoolean(true);
+        AtomicInteger waitTicks = new AtomicInteger(0);
+        final int waitThreshold = 15;
+        ClientTickEvents.EndTick animationEvent = (client) -> {
+            if (waitingForReload.get()) {
+                // Increment wait ticks while waiting for chunks to reload
+                waitTicks.incrementAndGet();
+
+                // Wait until all chunks have been reloaded before starting animation
+                var dispatcher = client.levelRenderer.getSectionRenderDispatcher();
+                if (waitTicks.get() > waitThreshold && dispatcher.isQueueEmpty()) {
+                    waitingForReload.set(false);
+
+                    // Start animation frame capture
+                    AnimationManager.startAnimation();
+                    CommandRunner.runCommand("/tick step %d".formatted(durationTicks));
+                }
+
+                // Block rest of event while waiting to start
+                return;
             }
 
             // Stop recording after duration has passed
             if (AnimationManager.isAnimating() && client.level.getGameTime() >= AnimationManager.getEndTick()) {
-                // Stop animation and recording
+                // Stop and clear animation state
                 AnimationManager.stopAnimation();
+                AnimationManager.clearAnimation();
 
-                // TODO: Add short delay before exporting animation to ensure all frames are captured
+                // Reset render transformations and player position
+                CommandRunner.runCommand("/tp @s %s %s %s".formatted(origPlayerPos.x, origPlayerPos.y, origPlayerPos.z));
+                source.getPlayer().setXRot(xRot);
+                source.getPlayer().setYRot(yRot);
 
-                // Start export process
-                AnimationManager.finishAnimation();
-                exportAnimation(source);
+                // Reload chunks to reset render changes
+                client.execute(client.levelRenderer::allChanged);
+
+                // Notify user about frame generation status
+                source.sendFeedback(
+                        Component.literal("Frame generation complete. Waiting for frame exports to finish...").withStyle(ChatFormatting.YELLOW)
+                );
+
+                // Wait for frame exports to finish before starting video creation
+                CompletableFuture.runAsync(FrameExportManager::waitForExportFinish).thenRun(() -> {
+                    client.execute(() -> source.sendFeedback(
+                            Component.literal("Creating animation from exported frames...").withStyle(ChatFormatting.YELLOW)
+                    ));
+
+                    // TODO: Call video creation class here
+                });
             }
         };
         ClientTickEvents.END_CLIENT_TICK.register(animationEvent);
@@ -142,11 +192,5 @@ public class CreateAnimationCommand {
         });
 
         return 1;
-    }
-
-    private static void exportAnimation(FabricClientCommandSource source) {
-        // TODO: Figure out how to export replay as video
-
-        source.sendFeedback(Component.literal("Exporting now (not really tho)..."));
     }
 }

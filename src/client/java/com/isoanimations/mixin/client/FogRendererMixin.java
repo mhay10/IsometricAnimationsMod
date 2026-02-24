@@ -1,6 +1,6 @@
 package com.isoanimations.mixin.client;
 
-import com.isoanimations.util.AnimationManager;
+import com.isoanimations.manager.AnimationManager;
 import net.minecraft.client.renderer.fog.FogRenderer;
 import net.minecraft.world.phys.AABB;
 import org.joml.Vector4f;
