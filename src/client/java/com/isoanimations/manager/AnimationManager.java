@@ -11,8 +11,8 @@ public class AnimationManager {
     private static AABB activeRegion = null;
     private static BlockPos pos1;
     private static BlockPos pos2;
-    private static AtomicBoolean isAnimating = new AtomicBoolean(false);
-    private static AtomicBoolean animationFinished = new AtomicBoolean(false);
+    private static final AtomicBoolean isAnimating = new AtomicBoolean(false);
+    private static final AtomicBoolean animationFinished = new AtomicBoolean(false);
 
     private static int durationTicks;
     private static long startTick;

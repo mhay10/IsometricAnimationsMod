@@ -15,12 +15,14 @@ import static com.isoanimations.IsometricAnimations.LOGGER;
 
 public class FrameExportManager {
     private static final ExecutorService exportExecutor = Executors.newSingleThreadExecutor();
+    private static final AtomicInteger pendingFrames = new AtomicInteger(0);
     private static int frameCounter = 0;
-    private static AtomicInteger pendingFrames = new AtomicInteger(0);
 
     public static void init() {
         // Ensure export directory exists
-        ExportConfig.FRAME_EXPORT_DIR.toFile().mkdirs();
+        if (!ExportConfig.FRAME_EXPORT_DIR.toFile().exists()) {
+            ExportConfig.FRAME_EXPORT_DIR.toFile().mkdirs();
+        }
 
         // Clear existing frames in export directory
         try {

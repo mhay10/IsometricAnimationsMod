@@ -97,6 +97,7 @@ public class CreateAnimationCommand {
 
         // Initialize output directories
         FrameExportManager.init();
+        FrameAssemblerManager.init();
 
         // Start recording animation
         AtomicBoolean waitingForReload = new AtomicBoolean(true);
@@ -143,10 +144,10 @@ public class CreateAnimationCommand {
                 // Wait for frame exports to finish before starting video creation
                 CompletableFuture.runAsync(FrameExportManager::waitForExportFinish).thenRun(() -> {
                     client.execute(() -> source.sendFeedback(
-                            Component.literal("Creating animation from exported frames...").withStyle(ChatFormatting.YELLOW)
+                            Component.literal("Creating animation from frames. This may take a while...").withStyle(ChatFormatting.YELLOW)
                     ));
 
-                    // TODO: Call video creation class here
+                    FrameAssemblerManager.createAnimation(source);
                 });
             }
         };
