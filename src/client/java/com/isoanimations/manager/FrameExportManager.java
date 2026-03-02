@@ -1,11 +1,8 @@
 package com.isoanimations.manager;
 
-import com.isoanimations.config.ExportConfig;
+import com.isoanimations.config.PathConfig;
 import com.isoanimations.util.BufferPool;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -24,13 +21,13 @@ public class FrameExportManager {
 
     public static void init() {
         // Ensure export directory exists
-        if (!ExportConfig.FRAME_EXPORT_DIR.toFile().exists()) {
-            ExportConfig.FRAME_EXPORT_DIR.toFile().mkdirs();
+        if (!PathConfig.FRAME_EXPORT_DIR.toFile().exists()) {
+            PathConfig.FRAME_EXPORT_DIR.toFile().mkdirs();
         }
 
         // Clear existing frames in export directory
         try {
-            Files.walk(ExportConfig.FRAME_EXPORT_DIR)
+            Files.walk(PathConfig.FRAME_EXPORT_DIR)
                     .filter(Files::isRegularFile)
                     .forEach(path -> {
                         try {
@@ -53,7 +50,7 @@ public class FrameExportManager {
         // Submit export task to executor thread
         exportExecutor.submit(() -> {
 
-            File frame = new File(ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%06d.tga".formatted(currentFrame)).toUri());
+            File frame = new File(PathConfig.FRAME_EXPORT_DIR.resolve("frame_%06d.tga".formatted(currentFrame)).toUri());
             try (FileOutputStream fos = new FileOutputStream(frame);
                  FileChannel channel = fos.getChannel()) {
                 // Create TGA image header

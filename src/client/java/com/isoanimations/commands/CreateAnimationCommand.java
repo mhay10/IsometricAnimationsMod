@@ -1,9 +1,12 @@
 package com.isoanimations.commands;
 
+import com.isoanimations.config.AnimationConfig;
+import com.isoanimations.config.RenderConfig;
 import com.isoanimations.manager.*;
 import com.isoanimations.util.BufferPool;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -12,6 +15,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.WorldCoordinates;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
@@ -32,32 +36,41 @@ public class CreateAnimationCommand {
 
                         // Test render transformations without creating animation
                         .then(ClientCommandManager.literal("testpos")
-                                .then(ClientCommandManager.argument("pos1", BlockPosArgument.blockPos())
-                                        .then(ClientCommandManager.argument("pos2", BlockPosArgument.blockPos())
-                                                .then(ClientCommandManager.argument("scale", IntegerArgumentType.integer(100, 500))
-                                                        .then(ClientCommandManager.argument("pitch", IntegerArgumentType.integer(0, 360))
-                                                                .then(ClientCommandManager.argument("yaw", IntegerArgumentType.integer(-90, 90))
-                                                                        .executes(CreateAnimationCommand::positionPlayer)))))))
+                                .then(buildAnimationArguments(false)))
 
                         // Create new animation with specifies arguments
                         .then(ClientCommandManager.literal("create")
-                                .then(ClientCommandManager.argument("pos1", BlockPosArgument.blockPos())
-                                        .then(ClientCommandManager.argument("pos2", BlockPosArgument.blockPos())
-                                                .then(ClientCommandManager.argument("scale", IntegerArgumentType.integer(100, 500))
-                                                        .then(ClientCommandManager.argument("pitch", IntegerArgumentType.integer(0, 360))
-                                                                .then(ClientCommandManager.argument("yaw", IntegerArgumentType.integer(-90, 90))
-                                                                        .then(ClientCommandManager.argument("duration", DoubleArgumentType.doubleArg(0.1))
-                                                                                .executes(CreateAnimationCommand::newAnimation))))))))));
+                                .then(buildAnimationArguments(true)))));
     }
 
-    public static int clearAnimation(CommandContext<FabricClientCommandSource> context) {
+    private static ArgumentBuilder<FabricClientCommandSource, ?> buildAnimationArguments(boolean creatingAnimation) {
+        // Build yaw argument first depending on if creating animation or not
+        var yawArg = ClientCommandManager.argument("yaw", IntegerArgumentType.integer(-90, 90));
+        if (creatingAnimation) {
+            // Add duration argument if creating animation
+            yawArg.then(ClientCommandManager.argument("duration", DoubleArgumentType.doubleArg(0.0))
+                    .executes(CreateAnimationCommand::newAnimation));
+        } else {
+            // Only position player without creating animation
+            yawArg.executes(CreateAnimationCommand::positionPlayer);
+        }
+
+        // Build rest of arguments
+        return ClientCommandManager.argument("pos1", BlockPosArgument.blockPos())
+                .then(ClientCommandManager.argument("pos2", BlockPosArgument.blockPos())
+                        .then(ClientCommandManager.argument("scale", IntegerArgumentType.integer(100, 500))
+                                .then(ClientCommandManager.argument("pitch", IntegerArgumentType.integer(0, 360))
+                                        .then(yawArg))));
+    }
+
+    private static int clearAnimation(CommandContext<FabricClientCommandSource> context) {
         AnimationManager.clearAnimation();
         context.getSource().getClient().execute(context.getSource().getClient().levelRenderer::allChanged);
         context.getSource().sendFeedback(Component.literal("Cleared active animation region and stopped animation."));
         return 1;
     }
 
-    public static int newAnimation(CommandContext<FabricClientCommandSource> context) {
+    private static int newAnimation(CommandContext<FabricClientCommandSource> context) {
         // Render only if game frozen with '/tick freeze'
         var source = context.getSource();
         boolean isFrozen = context.getSource().getWorld().tickRateManager().isFrozen();
@@ -66,32 +79,24 @@ public class CreateAnimationCommand {
             return 0;
         }
 
-        // Get arguments from command context
-        WorldCoordinates pos1 = context.getArgument("pos1", WorldCoordinates.class);
-        WorldCoordinates pos2 = context.getArgument("pos2", WorldCoordinates.class);
-        double duration = context.getArgument("duration", Double.class);
+        // Parse command arguments
+        AnimationConfig config = AnimationConfig.parse(context, true);
+        int durationTicks = (int) Math.ceil(config.duration() * RenderConfig.TICKS_PER_SECOND); // Convert seconds to ticks
 
-        // Convert arguments to more usable forms
-        var blockPos1 = pos1.getBlockPos(Objects.requireNonNull(source.getClient().getSingleplayerServer()).createCommandSourceStack()); // wtf is this
-        var blockPos2 = pos2.getBlockPos(Objects.requireNonNull(source.getClient().getSingleplayerServer()).createCommandSourceStack());
-        int durationTicks = (int) Math.ceil(duration * 20); // Convert seconds to ticks
-
-        // Store player position for later reset
+        // Store original settings for reset after animation
         Vec3 origPlayerPos = source.getPlayer().position();
         float xRot = source.getPlayer().getXRot();
         float yRot = source.getPlayer().getYRot();
-
-        // Store original game settings for later reset
         int origFps = source.getClient().options.framerateLimit().get();
-        float origTps = source.getClient().getSingleplayerServer().tickRateManager().tickrate();
 
+        // Notify user about animation creation and settings
         source.sendFeedback(
-                Component.literal("Creating animation with a duration of %.2f seconds (%d ticks)...".formatted(duration, durationTicks))
+                Component.literal("Creating animation with a duration of %.2f seconds (%d ticks)...".formatted(config.duration(), durationTicks))
                         .withStyle(ChatFormatting.GREEN)
         );
 
         // Create new animation region and set render transformations
-        AnimationManager.createAnimation(blockPos1, blockPos2, durationTicks);
+        AnimationManager.createAnimation(config.pos1(), config.pos2(), durationTicks);
         positionPlayer(context);
         source.getClient().execute(source.getClient().levelRenderer::allChanged);
 
@@ -115,16 +120,12 @@ public class CreateAnimationCommand {
             }
         }).thenRun(() -> ioReady.set(true));
 
-        // Wait a few seconds to ensure chunks are fully loaded before starting animation
-        try {
-            Thread.sleep(2000);
-        } catch (Exception ignored) {
-        }
+        // Set render settings for animation
+        source.getClient().options.hideGui = true;
+        source.getClient().options.framerateLimit().set(RenderConfig.renderFps);
+        CommandRunner.runCommand("/tick rate %s".formatted(RenderConfig.tickRate));
 
         // Start recording animation
-        source.getClient().options.hideGui = true; // Hide GUI during animation
-        source.getClient().options.framerateLimit().set(60); // Set high FPS for smoother animation
-        CommandRunner.runCommand("/tick rate 5");
         AtomicBoolean waitingForReload = new AtomicBoolean(true);
         AtomicInteger waitTicks = new AtomicInteger(0);
         final int waitThreshold = 15;
@@ -161,7 +162,7 @@ public class CreateAnimationCommand {
 
                 // Reset original game settings
                 client.options.framerateLimit().set(origFps);
-                CommandRunner.runCommand("/tick rate %f".formatted(origTps));
+                CommandRunner.runCommand("/tick rate %f".formatted(RenderConfig.TICKS_PER_SECOND));
 
                 // Reload chunks to reset render changes
                 client.execute(client.levelRenderer::allChanged);
@@ -187,27 +188,18 @@ public class CreateAnimationCommand {
     }
 
     private static int positionPlayer(CommandContext<FabricClientCommandSource> context) {
-        var source = context.getSource();
-
-        // Get arguments from command context
-        WorldCoordinates pos1 = context.getArgument("pos1", WorldCoordinates.class);
-        WorldCoordinates pos2 = context.getArgument("pos2", WorldCoordinates.class);
-        int scale = context.getArgument("scale", Integer.class);
-        int pitch = context.getArgument("pitch", Integer.class);
-        int yaw = context.getArgument("yaw", Integer.class);
-
-        // Convert arguments to more usable forms
-        var blockPos1 = pos1.getBlockPos(Objects.requireNonNull(source.getClient().getSingleplayerServer()).createCommandSourceStack()); // wtf is this
-        var blockPos2 = pos2.getBlockPos(Objects.requireNonNull(source.getClient().getSingleplayerServer()).createCommandSourceStack());
+        // Parse command arguments
+        AnimationConfig config = AnimationConfig.parse(context, false);
 
         // Set render transformations
-        RenderManager.setScale(scale);
-        RenderManager.setPitch(pitch);
-        RenderManager.setYaw(yaw);
+        RenderManager.setScale(config.scale());
+        RenderManager.setPitch(config.pitch());
+        RenderManager.setYaw(config.yaw());
 
         // Teleport player to render position
-        Vector3f renderPos = RenderManager.getRenderPosition(blockPos1, blockPos2, source.getPlayer().position(), 30);
-        Vector3f centerPos = RenderManager.getCenterPosition(blockPos1, blockPos2);
+        var source = context.getSource();
+        Vector3f renderPos = RenderManager.getRenderPosition(config.pos1(), config.pos2(), source.getPlayer().position(), 30);
+        Vector3f centerPos = RenderManager.getCenterPosition(config.pos2(), config.pos2());
         CommandRunner.runCommand("/tp @s %s %s %s".formatted(renderPos.x, renderPos.y, renderPos.z));
 
         // Make sure world is loaded

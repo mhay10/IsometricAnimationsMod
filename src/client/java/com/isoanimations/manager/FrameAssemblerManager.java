@@ -1,6 +1,7 @@
 package com.isoanimations.manager;
 
-import com.isoanimations.config.ExportConfig;
+import com.isoanimations.config.PathConfig;
+import com.isoanimations.config.RenderConfig;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -12,7 +13,6 @@ import org.bytedeco.javacv.Java2DFrameConverter;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.File;
@@ -30,8 +30,8 @@ public class FrameAssemblerManager {
 
     public static void init() {
         // Ensure export directory exists
-        if (!ExportConfig.ANIMATION_EXPORT_DIR.toFile().exists()) {
-            ExportConfig.ANIMATION_EXPORT_DIR.toFile().mkdirs();
+        if (!PathConfig.ANIMATION_EXPORT_DIR.toFile().exists()) {
+            PathConfig.ANIMATION_EXPORT_DIR.toFile().mkdirs();
         }
 
         // Set output file path
@@ -44,7 +44,7 @@ public class FrameAssemblerManager {
                 now.get(Calendar.MINUTE),
                 now.get(Calendar.SECOND)
         );
-        outputFilePath = ExportConfig.ANIMATION_EXPORT_DIR.resolve(filename);
+        outputFilePath = PathConfig.ANIMATION_EXPORT_DIR.resolve(filename);
 
         // Mark as initialized
         isInitialized = true;
@@ -57,9 +57,8 @@ public class FrameAssemblerManager {
         // Start animation creation in a new thread
         new Thread(() -> {
             // Set frame pattern and FPS
-            String framePattern = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%06d.tga").toFile().getAbsolutePath();
-            int numFrames = ExportConfig.FRAME_EXPORT_DIR.toFile().listFiles().length;
-            int targetFps = 240;
+            String framePattern = PathConfig.FRAME_EXPORT_DIR.resolve("frame_%06d.tga").toFile().getAbsolutePath();
+            int numFrames = PathConfig.FRAME_EXPORT_DIR.toFile().listFiles().length;
 
             try {
                 // Read first frame to get dimensions
@@ -74,7 +73,7 @@ public class FrameAssemblerManager {
                     // Set recorder parameters and start recording
                     recorder.setFormat("mp4");
                     recorder.setVideoCodec(AV_CODEC_ID_H264);
-                    recorder.setFrameRate(targetFps);
+                    recorder.setFrameRate(RenderConfig.outputFps);
                     recorder.setPixelFormat(AV_PIX_FMT_YUV420P);
 
                     recorder.start();
@@ -185,7 +184,7 @@ public class FrameAssemblerManager {
         if (!isInitialized) return;
 
         // Create clickable link to folder
-        String folderPath = ExportConfig.ANIMATION_EXPORT_DIR.toFile().getAbsolutePath();
+        String folderPath = PathConfig.ANIMATION_EXPORT_DIR.toFile().getAbsolutePath();
         Component link = Component.literal("Animations Folder")
                 .withStyle(style -> style
                         .withColor(ChatFormatting.AQUA)
