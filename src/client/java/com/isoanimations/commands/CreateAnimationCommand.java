@@ -199,7 +199,7 @@ public class CreateAnimationCommand {
         // Teleport player to render position
         var source = context.getSource();
         Vector3f renderPos = RenderManager.getRenderPosition(config.pos1(), config.pos2(), source.getPlayer().position(), 30);
-        Vector3f centerPos = RenderManager.getCenterPosition(config.pos2(), config.pos2());
+        Vector3f centerPos = RenderManager.getCenterPosition(config.pos1(), config.pos2());
         CommandRunner.runCommand("/tp @s %s %s %s".formatted(renderPos.x, renderPos.y, renderPos.z));
 
         // Make sure world is loaded
