@@ -1,7 +1,7 @@
 package com.isoanimations.mixin.client;
 
 import com.isoanimations.manager.AnimationManager;
-import com.isoanimations.manager.FrameManager;
+import com.isoanimations.manager.FrameCaptureManager;
 import com.mojang.blaze3d.TracyFrameCapture;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.world.phys.AABB;
@@ -17,7 +17,7 @@ public class WindowMixin {
         // Capture frame when animation region active
         AABB activeRegion = AnimationManager.getActiveRegion();
         if (activeRegion != null && AnimationManager.isAnimating()) {
-            FrameManager.captureFrame();
+            FrameCaptureManager.captureFrame();
         }
     }
 }

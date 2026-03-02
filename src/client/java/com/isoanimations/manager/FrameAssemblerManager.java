@@ -3,15 +3,20 @@ package com.isoanimations.manager;
 import com.isoanimations.config.ExportConfig;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import org.bytedeco.javacv.FFmpegFrameRecorder;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
+import org.lwjgl.stb.STBImage;
+import org.lwjgl.system.MemoryStack;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferByte;
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Calendar;
 
@@ -51,15 +56,15 @@ public class FrameAssemblerManager {
 
         // Start animation creation in a new thread
         new Thread(() -> {
-            // Set frame pattern and get FPS
-            String framePattern = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%06d.png").toFile().getAbsolutePath();
-            int fps = Minecraft.getInstance().getFps();
+            // Set frame pattern and FPS
+            String framePattern = ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%06d.tga").toFile().getAbsolutePath();
             int numFrames = ExportConfig.FRAME_EXPORT_DIR.toFile().listFiles().length;
+            int targetFps = 240;
 
             try {
                 // Read first frame to get dimensions
                 File firstFrame = new File(String.format(framePattern, 0));
-                BufferedImage image = ImageIO.read(firstFrame);
+                BufferedImage image = readTgaAsBgr(firstFrame);
                 int width = image.getWidth();
                 int height = image.getHeight();
 
@@ -69,7 +74,7 @@ public class FrameAssemblerManager {
                     // Set recorder parameters and start recording
                     recorder.setFormat("mp4");
                     recorder.setVideoCodec(AV_CODEC_ID_H264);
-                    recorder.setFrameRate(fps);
+                    recorder.setFrameRate(targetFps);
                     recorder.setPixelFormat(AV_PIX_FMT_YUV420P);
 
                     recorder.start();
@@ -84,7 +89,7 @@ public class FrameAssemblerManager {
                         }
 
                         // Read frame image and check if read correctly
-                        BufferedImage frameImg = ImageIO.read(frameFile);
+                        BufferedImage frameImg = readTgaAsBgr(frameFile);
                         if (frameImg == null) {
                             LOGGER.warn("Could not read frame image: {} (skipping)", frameFile.getAbsolutePath());
                             continue;
@@ -106,11 +111,8 @@ public class FrameAssemblerManager {
                     recorder.stop();
                 }
 
-                // Notify user of completion with clickable message to open export folder
-                source.sendFeedback(
-                        Component.literal("Animation created: %s".formatted(outputFilePath.getFileName()))
-                                .withStyle(ChatFormatting.GREEN)
-                );
+                // Notify user of completion with clickable message
+                sendOpenVideoMessage(source);
                 sendOpenFolderMessage(source);
             } catch (Exception e) {
                 LOGGER.error("Failed to create animation: ", e);
@@ -119,6 +121,83 @@ public class FrameAssemblerManager {
         }).start();
     }
 
+    private static BufferedImage readTgaAsBgr(File file) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            // Allocate buffers for width, height, and channels
+            var widthBuffer = stack.mallocInt(1);
+            var heightBuffer = stack.mallocInt(1);
+            var channelsBuffer = stack.mallocInt(1);
+
+            // Load image data into buffer
+            ByteBuffer tgaBuffer = STBImage.stbi_load(file.getAbsolutePath(), widthBuffer, heightBuffer, channelsBuffer, 3);
+            if (tgaBuffer == null) {
+                LOGGER.error("Failed to load TGA image: {} --> {}", file.getAbsolutePath(), STBImage.stbi_failure_reason());
+                return null;
+            }
+
+            // Get image dimensions from buffers
+            int width = widthBuffer.get(0);
+            int height = heightBuffer.get(0);
+
+            // Create BGR image and buffer for pixel data
+            BufferedImage bgrImage = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
+            byte[] bgrPixels = ((DataBufferByte) bgrImage.getRaster().getDataBuffer()).getData();
+
+            // Convert the RGB data to BGR format
+            for (int i = 0; i < width * height; i++) {
+                int index = i * 3;
+                bgrPixels[index] = tgaBuffer.get(index + 2); // Blue
+                bgrPixels[index + 1] = tgaBuffer.get(index + 1); // Green
+                bgrPixels[index + 2] = tgaBuffer.get(index); // Red
+            }
+
+            // Free the TGA buffer
+            STBImage.stbi_image_free(tgaBuffer);
+
+            return bgrImage;
+        }
+    }
+
+    private static void sendOpenVideoMessage(FabricClientCommandSource source) {
+        // Only send if animation has been created
+        if (!isInitialized) return;
+
+        // Create clickable link to video file
+        String filename = outputFilePath.toFile().getAbsolutePath();
+        Component link = Component.literal(outputFilePath.getFileName().toString())
+                .withStyle(style -> style
+                        .withColor(ChatFormatting.GREEN)
+                        .withUnderlined(true)
+                        .withClickEvent(new ClickEvent.OpenFile(filename))
+                        .withHoverEvent(new HoverEvent.ShowText(Component.literal("Open video file")))
+                );
+
+        // Combine link with message and send to user
+        Component message = Component.literal("Animation created: ")
+                .withStyle(ChatFormatting.GREEN)
+                .append(link);
+        source.sendFeedback(message);
+
+    }
+
     private static void sendOpenFolderMessage(FabricClientCommandSource source) {
+        // Only send if animation has been created
+        if (!isInitialized) return;
+
+        // Create clickable link to folder
+        String folderPath = ExportConfig.ANIMATION_EXPORT_DIR.toFile().getAbsolutePath();
+        Component link = Component.literal("Animations Folder")
+                .withStyle(style -> style
+                        .withColor(ChatFormatting.AQUA)
+                        .withUnderlined(true)
+                        .withClickEvent(new ClickEvent.OpenFile(folderPath))
+                        .withHoverEvent(new HoverEvent.ShowText(Component.literal("Open animation export folder")))
+                );
+
+        // Combine link with message and send to user
+        Component message = Component.literal("Find all animations in: ")
+                .withStyle(ChatFormatting.AQUA)
+                .append(link);
+        source.sendFeedback(message);
     }
 }

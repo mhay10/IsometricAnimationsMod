@@ -1,5 +1,6 @@
 package com.isoanimations.manager;
 
+import com.isoanimations.util.BufferPool;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11;
@@ -8,7 +9,9 @@ import org.lwjgl.opengl.GL21;
 
 import java.nio.ByteBuffer;
 
-public class FrameManager {
+import static com.isoanimations.IsometricAnimations.LOGGER;
+
+public class FrameCaptureManager {
     private static int lastWidth = 0;
     private static int lastHeight = 0;
 
@@ -18,7 +21,7 @@ public class FrameManager {
 
     public static void initPBOs(int width, int height) {
         // Initialize PBOs with empty data
-        int dataSize = width * height * 4; // RGBA
+        int dataSize = width * height * 3; // BGR format
         for (int i = 0; i < pbos.length; i++) {
             pbos[i] = GL15.glGenBuffers();
             GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pbos[i]);
@@ -46,7 +49,7 @@ public class FrameManager {
 
         // Bind current PBO and read pixels into it
         GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pbos[pboIndex]);
-        GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, 0);
+        GL11.glReadPixels(0, 0, width, height, GL15.GL_BGR, GL11.GL_UNSIGNED_BYTE, 0);
 
         // Bind PBO for reading the previous frame's data
         if (!isFirstFrame) {
@@ -56,14 +59,26 @@ public class FrameManager {
             ByteBuffer buffer = GL15.glMapBuffer(GL21.GL_PIXEL_PACK_BUFFER, GL15.GL_READ_ONLY, null);
             if (buffer != null) {
                 // Copy data from buffer
-                byte[] frameData = new byte[width * height * 4];
-                buffer.get(frameData);
+//                byte[] frameData = new byte[width * height * 3]; // BGR format
 
-                // Unmap buffer after reading
-                GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
+                // Try to put data into buffer pool
+                ByteBuffer frameData = BufferPool.tryGetBuffer();
+                if (frameData != null) {
+                    // Transfer data from PBO buffer to frameData buffer
+                    frameData.put(buffer);
+                    frameData.flip();
 
-                // Process frame data in separate thread
-                FrameExportManager.queueFrameExport(frameData, width, height);
+                    // Unmap buffer after reading
+                    GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
+
+                    // Process frame data in separate thread
+                    FrameExportManager.queueFrameExport(frameData, width, height);
+                } else {
+                    GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
+                    LOGGER.warn("Export thread too slow! Dropping frame");
+                }
+
+
             }
         }
 

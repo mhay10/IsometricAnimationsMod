@@ -1,6 +1,7 @@
 package com.isoanimations.commands;
 
 import com.isoanimations.manager.*;
+import com.isoanimations.util.BufferPool;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -80,6 +81,10 @@ public class CreateAnimationCommand {
         float xRot = source.getPlayer().getXRot();
         float yRot = source.getPlayer().getYRot();
 
+        // Store original game settings for later reset
+        int origFps = source.getClient().options.framerateLimit().get();
+        float origTps = source.getClient().getSingleplayerServer().tickRateManager().tickrate();
+
         source.sendFeedback(
                 Component.literal("Creating animation with a duration of %.2f seconds (%d ticks)...".formatted(duration, durationTicks))
                         .withStyle(ChatFormatting.GREEN)
@@ -93,13 +98,33 @@ public class CreateAnimationCommand {
         // Initialize PBOs for frame capture
         int width = source.getClient().getWindow().getWidth();
         int height = source.getClient().getWindow().getHeight();
-        FrameManager.initPBOs(width, height);
+        FrameCaptureManager.initPBOs(width, height);
 
-        // Initialize output directories
-        FrameExportManager.init();
-        FrameAssemblerManager.init();
+        // Initialize frame handlers
+        AtomicBoolean ioReady = new AtomicBoolean(false);
+        CompletableFuture.runAsync(() -> {
+            // Run initializers
+            BufferPool.init(width * height * 3);
+            FrameExportManager.init();
+            FrameAssemblerManager.init();
+
+            // Wait a moment to ensure everything is ready
+            try {
+                Thread.sleep(250);
+            } catch (Exception ignored) {
+            }
+        }).thenRun(() -> ioReady.set(true));
+
+        // Wait a few seconds to ensure chunks are fully loaded before starting animation
+        try {
+            Thread.sleep(2000);
+        } catch (Exception ignored) {
+        }
 
         // Start recording animation
+        source.getClient().options.hideGui = true; // Hide GUI during animation
+        source.getClient().options.framerateLimit().set(60); // Set high FPS for smoother animation
+        CommandRunner.runCommand("/tick rate 5");
         AtomicBoolean waitingForReload = new AtomicBoolean(true);
         AtomicInteger waitTicks = new AtomicInteger(0);
         final int waitThreshold = 15;
@@ -108,9 +133,9 @@ public class CreateAnimationCommand {
                 // Increment wait ticks while waiting for chunks to reload
                 waitTicks.incrementAndGet();
 
-                // Wait until all chunks have been reloaded before starting animation
+                // Wait until io operations are done and all chunks have been reloaded before starting animation
                 var dispatcher = client.levelRenderer.getSectionRenderDispatcher();
-                if (waitTicks.get() > waitThreshold && dispatcher.isQueueEmpty()) {
+                if (ioReady.get() && waitTicks.get() > waitThreshold && dispatcher.isQueueEmpty()) {
                     waitingForReload.set(false);
 
                     // Start animation frame capture
@@ -126,12 +151,17 @@ public class CreateAnimationCommand {
             if (AnimationManager.isAnimating() && client.level.getGameTime() >= AnimationManager.getEndTick()) {
                 // Stop and clear animation state
                 AnimationManager.stopAnimation();
+                client.options.hideGui = false; // Unhide GUI after animation
                 AnimationManager.clearAnimation();
 
                 // Reset render transformations and player position
                 CommandRunner.runCommand("/tp @s %s %s %s".formatted(origPlayerPos.x, origPlayerPos.y, origPlayerPos.z));
                 source.getPlayer().setXRot(xRot);
                 source.getPlayer().setYRot(yRot);
+
+                // Reset original game settings
+                client.options.framerateLimit().set(origFps);
+                CommandRunner.runCommand("/tick rate %f".formatted(origTps));
 
                 // Reload chunks to reset render changes
                 client.execute(client.levelRenderer::allChanged);

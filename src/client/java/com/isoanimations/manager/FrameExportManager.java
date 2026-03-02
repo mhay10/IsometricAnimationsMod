@@ -1,20 +1,24 @@
 package com.isoanimations.manager;
 
 import com.isoanimations.config.ExportConfig;
+import com.isoanimations.util.BufferPool;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.isoanimations.IsometricAnimations.LOGGER;
 
 public class FrameExportManager {
-    private static final ExecutorService exportExecutor = Executors.newSingleThreadExecutor();
+    private static final ExecutorService exportExecutor = Executors.newWorkStealingPool();
     private static final AtomicInteger pendingFrames = new AtomicInteger(0);
     private static int frameCounter = 0;
 
@@ -40,7 +44,7 @@ public class FrameExportManager {
         }
     }
 
-    public static void queueFrameExport(byte[] frameData, int width, int height) {
+    public static void queueFrameExport(ByteBuffer frameData, int width, int height) {
         // Increment pending frame count
         int currentFrame = frameCounter++;
         pendingFrames.incrementAndGet();
@@ -48,39 +52,29 @@ public class FrameExportManager {
 
         // Submit export task to executor thread
         exportExecutor.submit(() -> {
-            // Create blank image in memory
-            BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
 
-            // Decode raw RGBA data into image
-            int bytesPerPixel = 4;
-            for (int x = 0; x < width; x++) {
-                for (int y = 0; y < height; y++) {
-                    // Flip y coordinate to match OpenGL's bottom-left origin
-                    int flippedY = height - 1 - y;
+            File frame = new File(ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%06d.tga".formatted(currentFrame)).toUri());
+            try (FileOutputStream fos = new FileOutputStream(frame);
+                 FileChannel channel = fos.getChannel()) {
+                // Create TGA image header
+                byte[] header = new byte[18];
+                header[2] = 2; // Uncompressed true-color image
+                header[12] = (byte) (width & 0xFF); // Width low byte
+                header[13] = (byte) ((width >> 8) & 0xFF); // Width high byte
+                header[14] = (byte) (height & 0xFF); // Height low byte
+                header[15] = (byte) ((height >> 8) & 0xFF); // Height high byte
+                header[16] = 24; // Bits per pixel
+                header[17] = 0; // Image descriptor
 
-                    // Get starting index for pixel data
-                    int index = (y * width + x) * bytesPerPixel;
-
-                    // Extract RGBA components
-                    int r = frameData[index] & 0xFF;
-                    int g = frameData[index + 1] & 0xFF;
-                    int b = frameData[index + 2] & 0xFF;
-                    int a = 255;
-
-                    // Set pixel color in image as ARGB
-                    int argb = (a << 24) | (r << 16) | (g << 8) | b;
-                    image.setRGB(x, flippedY, argb);
-                }
-            }
-
-            // Write image to disk
-            try {
-                // Save frame with sequential filename
-                File frame = new File(ExportConfig.FRAME_EXPORT_DIR.resolve("frame_%06d.png".formatted(currentFrame)).toUri());
-                ImageIO.write(image, "PNG", frame);
+                // Write header and image data to file
+                channel.write(ByteBuffer.wrap(header));
+                channel.write(frameData);
             } catch (Exception e) {
-                LOGGER.error("Failed to export frame {}: {}", currentFrame, e);
+                LOGGER.error("Failed to export frame {}: {} (", currentFrame, e);
             } finally {
+                // Return buffer to pool
+                BufferPool.returnBuffer(frameData);
+
                 // Decrement pending frame count after export completes
                 pendingFrames.decrementAndGet();
                 LOGGER.info("Frame {} export complete ({} pending)", currentFrame, pendingFrames.get());
@@ -89,11 +83,16 @@ public class FrameExportManager {
     }
 
     public static void waitForExportFinish() {
+        // Wait until all pending frames have been exported
         while (pendingFrames.get() > 0) {
             try {
                 Thread.sleep(100);
             } catch (Exception ignored) {
             }
         }
+
+        // Reset frame counter after all exports complete
+        frameCounter = 0;
+        System.gc();
     }
 }

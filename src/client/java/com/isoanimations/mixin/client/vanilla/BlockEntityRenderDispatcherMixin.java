@@ -1,4 +1,4 @@
-package com.isoanimations.mixin.client;
+package com.isoanimations.mixin.client.vanilla;
 
 import com.isoanimations.manager.AnimationManager;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
