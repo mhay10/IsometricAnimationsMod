@@ -3,12 +3,13 @@
   "package": "com.isoanimations.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "TickStepMixin",
-    "PistonBlockEntityMixin",
-    "PistonProgressMixin",
-    "EntityPositionMixin",
-    "EntityRenderDispatcherMixin",
-    "MinecraftClientMixin"
+    "AbstractClientPlayerMixin",
+    "vanilla.BlockEntityRenderDispatcherMixin",
+    "vanilla.EntityRenderDispatcherMixin",
+    "FogRendererMixin",
+    "WindowMixin",
+    "LevelRendererMixin",
+    "vanilla.RenderSectionRegionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

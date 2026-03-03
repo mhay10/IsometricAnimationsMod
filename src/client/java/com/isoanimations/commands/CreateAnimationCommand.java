@@ -1,135 +1,235 @@
 package com.isoanimations.commands;
 
-
-import com.glisco.isometricrenders.mixin.access.DefaultPosArgumentAccessor;
-import com.isoanimations.util.AnimationAssembler;
-import com.isoanimations.util.AnimationFrameGenerator;
-import com.isoanimations.util.SubTickConfig;
+import com.isoanimations.config.AnimationConfig;
+import com.isoanimations.config.RenderConfig;
+import com.isoanimations.manager.*;
+import com.isoanimations.util.BufferPool;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.command.argument.BlockPosArgumentType;
-import net.minecraft.command.argument.DefaultPosArgument;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.ChatFormatting;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
+import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
+import net.minecraft.commands.arguments.coordinates.WorldCoordinates;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
 
-import static com.isoanimations.IsometricAnimations.LOGGER;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT;
 
-
-// Test command: /animate -4 -51 5 5 -59 4 125 200 20 1.5 60
-// FPS parameter is optional, defaults to 60
 public class CreateAnimationCommand {
     public static void registerCommand() {
-        LOGGER.info("Registering /animate client command...");
-        EVENT.register((dispatcher, registryAccess) -> {
-            dispatcher.register(ClientCommandManager.literal("animate")
-                    // Help subcommand
-                    .then(ClientCommandManager.literal("help")
-                            .executes(CreateAnimationCommand::showHelp))
-                    // Main command with arguments
-                    .then(ClientCommandManager.argument("pos1", BlockPosArgumentType.blockPos())
-                            .then(ClientCommandManager.argument("pos2", BlockPosArgumentType.blockPos())
-                                    .then(ClientCommandManager.argument("scale", IntegerArgumentType.integer(0, 500))
-                                            .then(ClientCommandManager.argument("rotation", IntegerArgumentType.integer(0, 360))
-                                                    .then(ClientCommandManager.argument("slant", IntegerArgumentType.integer(-90, 90))
-                                                            .then(ClientCommandManager.argument("duration", DoubleArgumentType.doubleArg(0))
-                                                                    .executes(CreateAnimationCommand::execute)
-                                                                    .then(ClientCommandManager.argument("fps", IntegerArgumentType.integer(20, 1000))
-                                                                            .executes(CreateAnimationCommand::executeWithFPS)))))))));
-            LOGGER.info("Successfully registered /animate client command");
-        });
+        EVENT.register((dispatcher, registryAccess) ->
+                dispatcher.register(ClientCommandManager.literal("isoanimations")
+                        // Clear previous animation state
+                        .then(ClientCommandManager.literal("clear").executes(CreateAnimationCommand::clearAnimation))
+
+                        // Test render transformations without creating animation
+                        .then(ClientCommandManager.literal("testpos")
+                                .then(buildAnimationArguments(false)))
+
+                        // Create new animation with specifies arguments
+                        .then(ClientCommandManager.literal("create")
+                                .then(buildAnimationArguments(true)))));
     }
 
-    public static int showHelp(CommandContext<FabricClientCommandSource> context) {
-        context.getSource().sendFeedback(Text.literal("=== Isometric Animation Command Help ===").styled(style -> style.withBold(true).withColor(0x00FFFF)));
-        context.getSource().sendFeedback(Text.literal(""));
-        context.getSource().sendFeedback(Text.literal("Usage: ").styled(style -> style.withColor(0xFFFF00))
-                .append(Text.literal("/animate <pos1> <pos2> <scale> <rotation> <slant> <duration> [fps]").styled(style -> style.withColor(0xFFFFFF))));
-        context.getSource().sendFeedback(Text.literal(""));
-        context.getSource().sendFeedback(Text.literal("Parameters:").styled(style -> style.withBold(true)));
-        context.getSource().sendFeedback(Text.literal("  pos1, pos2").styled(style -> style.withColor(0x00FF00))
-                .append(Text.literal(" - Corner positions of the area to render").styled(style -> style.withColor(0xAAAAAA))));
-        context.getSource().sendFeedback(Text.literal("  scale").styled(style -> style.withColor(0x00FF00))
-                .append(Text.literal(" - Render scale (0-500)").styled(style -> style.withColor(0xAAAAAA))));
-        context.getSource().sendFeedback(Text.literal("  rotation").styled(style -> style.withColor(0x00FF00))
-                .append(Text.literal(" - Camera rotation angle (0-360)").styled(style -> style.withColor(0xAAAAAA))));
-        context.getSource().sendFeedback(Text.literal("  slant").styled(style -> style.withColor(0x00FF00))
-                .append(Text.literal(" - Camera slant angle (-90 to 90)").styled(style -> style.withColor(0xAAAAAA))));
-        context.getSource().sendFeedback(Text.literal("  duration").styled(style -> style.withColor(0x00FF00))
-                .append(Text.literal(" - Animation duration in seconds").styled(style -> style.withColor(0xAAAAAA))));
-        context.getSource().sendFeedback(Text.literal("  fps").styled(style -> style.withColor(0x00FF00))
-                .append(Text.literal(" - [OPTIONAL] Frames per second (20-1000, default: 1000)").styled(style -> style.withColor(0xAAAAAA))));
-        context.getSource().sendFeedback(Text.literal(""));
-        context.getSource().sendFeedback(Text.literal("Important Notes:").styled(style -> style.withBold(true).withColor(0xFF5555)));
-        context.getSource().sendFeedback(Text.literal("  • Set up your animation BEFORE freezing").styled(style -> style.withColor(0xFFAAAA)));
-        context.getSource().sendFeedback(Text.literal("  • Use '/tick freeze' to freeze the game").styled(style -> style.withColor(0xFFAAAA)));
-        context.getSource().sendFeedback(Text.literal("  • Then run this command while frozen").styled(style -> style.withColor(0xFFAAAA)));
-        context.getSource().sendFeedback(Text.literal(""));
-        context.getSource().sendFeedback(Text.literal("Example:").styled(style -> style.withBold(true)));
-        context.getSource().sendFeedback(Text.literal("  /animate -4 -51 5 5 -59 4 125 200 20 1.5 60").styled(style -> style.withColor(0x55FF55)));
+    private static ArgumentBuilder<FabricClientCommandSource, ?> buildAnimationArguments(boolean creatingAnimation) {
+        // Build yaw argument first depending on if creating animation or not
+        var yawArg = ClientCommandManager.argument("yaw", IntegerArgumentType.integer(-90, 90));
+        if (creatingAnimation) {
+            // Add duration argument if creating animation
+            yawArg.then(ClientCommandManager.argument("duration", DoubleArgumentType.doubleArg(0.0))
+                    .executes(CreateAnimationCommand::newAnimation));
+        } else {
+            // Only position player without creating animation
+            yawArg.executes(CreateAnimationCommand::positionPlayer);
+        }
+
+        // Build rest of arguments
+        return ClientCommandManager.argument("pos1", BlockPosArgument.blockPos())
+                .then(ClientCommandManager.argument("pos2", BlockPosArgument.blockPos())
+                        .then(ClientCommandManager.argument("scale", IntegerArgumentType.integer(100, 500))
+                                .then(ClientCommandManager.argument("pitch", IntegerArgumentType.integer(0, 360))
+                                        .then(yawArg))));
+    }
+
+    private static int clearAnimation(CommandContext<FabricClientCommandSource> context) {
+        AnimationManager.clearAnimation();
+        context.getSource().getClient().execute(context.getSource().getClient().levelRenderer::allChanged);
+        context.getSource().sendFeedback(Component.literal("Cleared active animation region and stopped animation."));
         return 1;
     }
 
-    public static int execute(CommandContext<FabricClientCommandSource> context) {
-        // Default to 1000 FPS for smoothest animation
-        SubTickConfig.setTargetFPS(1000);
-        return executeAnimation(context);
-    }
-
-    public static int executeWithFPS(CommandContext<FabricClientCommandSource> context) {
-        // Get FPS from command argument
-        int fps = context.getArgument("fps", Integer.class);
-        SubTickConfig.setTargetFPS(fps);
-        return executeAnimation(context);
-    }
-
-    private static int executeAnimation(CommandContext<FabricClientCommandSource> context) {
-        // Get arguments from the command context
-        BlockPos pos1 = getPosFromArgument(context.getArgument("pos1", DefaultPosArgument.class), context.getSource());
-        BlockPos pos2 = getPosFromArgument(context.getArgument("pos2", DefaultPosArgument.class), context.getSource());
-        int scale = context.getArgument("scale", Integer.class);
-        int rotation = context.getArgument("rotation", Integer.class);
-        int slant = context.getArgument("slant", Integer.class);
-        double duration = context.getArgument("duration", Double.class);
-
+    private static int newAnimation(CommandContext<FabricClientCommandSource> context) {
         // Render only if game frozen with '/tick freeze'
-        boolean isFrozen = context.getSource().getWorld().getTickManager().isFrozen();
+        var source = context.getSource();
+        boolean isFrozen = context.getSource().getWorld().tickRateManager().isFrozen();
         if (!isFrozen) {
-            context.getSource().sendError(Text.literal("Game must be frozen to create animation. Use '/tick freeze' command."));
-            context.getSource().sendError(Text.literal("Important: Set up your animation BEFORE freezing, then freeze and run /animate"));
+            source.sendError(Component.literal("Game must be frozen to create animation. Use '/tick freeze' command first."));
             return 0;
         }
 
-        // Set callback to create animation after frame generation is complete
-        AnimationFrameGenerator frameGenerator = new AnimationFrameGenerator(context.getSource(), pos1, pos2, scale, rotation, slant, duration);
-        frameGenerator.setCompletionCallback(totalFrames -> {
-            try {
-                new AnimationAssembler(context.getSource(), totalFrames).createAnimation();
-            } catch (InterruptedException ignored) {
-            }
-        });
+        // Parse command arguments
+        AnimationConfig config = AnimationConfig.parse(context, true);
+        int durationTicks = (int) Math.ceil(config.duration() * RenderConfig.TICKS_PER_SECOND); // Convert seconds to ticks
 
-        // Start frame generation
-        frameGenerator.start();
+        // Store original settings for reset after animation
+        Vec3 origPlayerPos = source.getPlayer().position();
+        float xRot = source.getPlayer().getXRot();
+        float yRot = source.getPlayer().getYRot();
+        int origFps = source.getClient().options.framerateLimit().get();
+
+        // Notify user about animation creation and settings
+        source.sendFeedback(
+                Component.literal("Creating animation with a duration of %.2f seconds (%d ticks)...".formatted(config.duration(), durationTicks))
+                        .withStyle(ChatFormatting.GREEN)
+        );
+
+        // Create new animation region
+        AnimationManager.createAnimation(config.pos1(), config.pos2(), durationTicks);
+
+        // Initialize animation state and player position
+        AtomicBoolean ioReady = new AtomicBoolean(false);
+        positionPlayer(context);
+        preAnimationInit(source, ioReady);
+
+        // Register on client tick event to manage animation state and frame capture
+        AtomicBoolean waitingForReload = new AtomicBoolean(true);
+        AtomicInteger waitTicks = new AtomicInteger(0);
+        final int waitThreshold = 15;
+        ClientTickEvents.EndTick animationEvent = (client) -> {
+            if (waitingForReload.get()) {
+                // Increment wait ticks while waiting for chunks to reload
+                waitTicks.incrementAndGet();
+
+                // Wait until io operations are done and all chunks are loaded before starting animation
+                var dispatcher = client.levelRenderer.getSectionRenderDispatcher();
+                if (ioReady.get() && waitTicks.get() > waitThreshold && dispatcher.isQueueEmpty()) {
+                    waitingForReload.set(false);
+
+                    // Start animation frame capture
+                    AnimationManager.startAnimation();
+                    CommandRunner.runCommand("/tick step %d".formatted(durationTicks));
+                }
+
+                // Block rest of event while waiting to start
+                return;
+            }
+
+            // Stop recording after duration has passed
+            if (AnimationManager.isAnimating() && client.level.getGameTime() >= AnimationManager.getEndTick()) {
+                // Cleanup animation state and reset player
+                postAnimationCleanup(source, origPlayerPos, xRot, yRot, origFps);
+
+                // Notify user about frame generation status
+                source.sendFeedback(
+                        Component.literal("Frame generation complete. Waiting for frame exports to finish...").withStyle(ChatFormatting.YELLOW)
+                );
+
+                // Wait for frame exports to finish before starting video creation
+                CompletableFuture.runAsync(FrameExportManager::waitForExportFinish).thenRun(() -> {
+                    client.execute(() -> source.sendFeedback(
+                            Component.literal("Creating animation from frames. This may take a while...").withStyle(ChatFormatting.YELLOW)
+                    ));
+                    FrameAssemblerManager.createAnimation(source);
+                });
+            }
+        };
+        ClientTickEvents.END_CLIENT_TICK.register(animationEvent);
 
         return 1;
     }
 
+    private static void preAnimationInit(FabricClientCommandSource source, AtomicBoolean ioReady) {
+        // Reload chunks to ensure all render changes are applied before starting animation
+        source.getClient().execute(source.getClient().levelRenderer::allChanged);
 
-    private static BlockPos getPosFromArgument(DefaultPosArgument arg, FabricClientCommandSource source) {
-        // Get the player's position to use as a reference for the absolute coordinates
-        DefaultPosArgumentAccessor accessor = (DefaultPosArgumentAccessor) arg;
-        Vec3d pos = source.getPlayer().getPos();
+        // Initialize PBOs for frame capture
+        int width = source.getClient().getWindow().getWidth();
+        int height = source.getClient().getWindow().getHeight();
+        FrameCaptureManager.initPBOs(width, height);
 
-        // Convert the relative coordinates to absolute coordinates using the accessor
-        return BlockPos.ofFloored(
-                accessor.isometric$getX().toAbsoluteCoordinate(pos.x),
-                accessor.isometric$getY().toAbsoluteCoordinate(pos.y),
-                accessor.isometric$getZ().toAbsoluteCoordinate(pos.z)
-        );
+        // Initialize frame managers in separate thread
+        CompletableFuture.runAsync(() -> {
+            // Initialize buffer pool based on render dimensions
+            BufferPool.init(width * height * 3);
+
+            // Initialize frame export and assembler managers
+            FrameExportManager.init();
+            FrameAssemblerManager.init();
+
+            // Wait a moment to ensure everything is ready
+            try {
+                Thread.sleep(250);
+            } catch (Exception ignored) {
+            }
+        }).thenRun(() -> ioReady.set(true)); // Set IO ready flag after initialization is complete
+
+        // Set render settings for animation
+        source.getClient().options.hideGui = true;
+        source.getClient().options.framerateLimit().set(RenderConfig.renderFps);
+        CommandRunner.runCommand("/tick rate %s".formatted(RenderConfig.tickRate));
+    }
+
+    private static void postAnimationCleanup(FabricClientCommandSource source, Vec3 origPlayerPos, float origXRot, float origYRot, int origFps) {
+        // Stop and clear animation state
+        AnimationManager.stopAnimation();
+        AnimationManager.clearAnimation();
+        source.getClient().options.hideGui = false; // Unhide GUI after animation
+
+        // Reset render transformations and player position
+        CommandRunner.runCommand("/tp @s %s %s %s".formatted(origPlayerPos.x, origPlayerPos.y, origPlayerPos.z));
+        source.getPlayer().setXRot(origXRot);
+        source.getPlayer().setYRot(origYRot);
+
+        // Reset original game settings
+        source.getClient().options.framerateLimit().set(origFps);
+        CommandRunner.runCommand("/tick rate %f".formatted(RenderConfig.TICKS_PER_SECOND));
+
+        // Reload chunks to reset render changes
+        source.getClient().execute(source.getClient().levelRenderer::allChanged);
+
+        // Cleanup PBOs after animation is done
+        FrameCaptureManager.cleanupPBOs();
+    }
+
+    private static int positionPlayer(CommandContext<FabricClientCommandSource> context) {
+        // Parse command arguments
+        AnimationConfig config = AnimationConfig.parse(context, false);
+
+        // Set render transformations
+        RenderManager.setScale(config.scale());
+        RenderManager.setPitch(config.pitch());
+        RenderManager.setYaw(config.yaw());
+
+        // Teleport player to render position
+        var source = context.getSource();
+        Vector3f renderPos = RenderManager.getRenderPosition(config.pos1(), config.pos2(), source.getPlayer().position(), 30);
+        Vector3f centerPos = RenderManager.getCenterPosition(config.pos1(), config.pos2());
+        CommandRunner.runCommand("/tp @s %s %s %s".formatted(renderPos.x, renderPos.y, renderPos.z));
+
+        // Make sure world is loaded
+        source.getClient().getSingleplayerServer().saveEverything(false, true, false);
+
+        // Position player on client thread
+        source.getClient().execute(() -> {
+            // Look at center of animation region
+            source.getClient().player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(centerPos));
+
+            // Try to prevent camera clipping region
+            CommandRunner.runCommand("/tp @s ~ ~0.5 ~");
+        });
+
+        return 1;
     }
 }
