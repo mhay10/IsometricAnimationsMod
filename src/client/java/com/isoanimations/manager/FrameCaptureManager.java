@@ -32,6 +32,21 @@ public class FrameCaptureManager {
         GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
     }
 
+    public static void cleanupPBOs() {
+        for (int i = 0; i < pbos.length; i++) {
+            // Delete PBO if it exists
+            if (pbos[i] != 0) {
+                GL15.glDeleteBuffers(pbos[i]);
+                pbos[i] = 0;
+            }
+        }
+
+        // Reset state
+        isFirstFrame = true;
+        lastWidth = 0;
+        lastHeight = 0;
+    }
+
     public static void captureFrame() {
         // Get current window dimensions
         Window window = Minecraft.getInstance().getWindow();
@@ -40,7 +55,10 @@ public class FrameCaptureManager {
 
         // Reinitialize PBOs if dimensions changed
         if (width != lastWidth || height != lastHeight) {
+            cleanupPBOs();
             initPBOs(width, height);
+            lastWidth = width;
+            lastHeight = height;
         }
 
         // Update PBO indexes
@@ -58,9 +76,6 @@ public class FrameCaptureManager {
             // Map buffer to CPU memory
             ByteBuffer buffer = GL15.glMapBuffer(GL21.GL_PIXEL_PACK_BUFFER, GL15.GL_READ_ONLY, null);
             if (buffer != null) {
-                // Copy data from buffer
-//                byte[] frameData = new byte[width * height * 3]; // BGR format
-
                 // Try to put data into buffer pool
                 ByteBuffer frameData = BufferPool.tryGetBuffer();
                 if (frameData != null) {

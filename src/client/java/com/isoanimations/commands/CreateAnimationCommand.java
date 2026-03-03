@@ -199,7 +199,8 @@ public class CreateAnimationCommand {
         // Reload chunks to reset render changes
         source.getClient().execute(source.getClient().levelRenderer::allChanged);
 
-        // TODO: Free allocated memory in buffer pool, PBOS, etc.
+        // Cleanup PBOs after animation is done
+        FrameCaptureManager.cleanupPBOs();
     }
 
     private static int positionPlayer(CommandContext<FabricClientCommandSource> context) {
