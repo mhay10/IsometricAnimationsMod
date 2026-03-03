@@ -25,13 +25,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set Mod Version
-        id: mod_version
-        run: |
-          MOD_VERSION=$(grep '^mod_version=' ./gradle.properties | cut -d '=' -f 2)
-          echo "MOD_VERSION=$MOD_VERSION" >> $GITHUB_ENV
-          echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
-
       - name: Build with Gradle
         run: ./gradlew clean build
           
@@ -50,12 +43,18 @@ jobs:
         with:
           name: built-jars
           path: build/libs
+
+      - name: Set Mod Version
+        id: mod_version
+        run: |
+          MOD_VERSION=$(grep '^mod_version=' ./gradle.properties | cut -d '=' -f 2)
+          echo "MOD_VERSION=$MOD_VERSION" >> $GITHUB_ENV
         
       - name: Publish to GitHub
         if: ${{ inputs.release_github == true }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.build.outputs.mod_version }}
+          tag_name: ${{ env.MOD_VERSION }}
           files: |
             build/libs/*.jar
             !build/lib/*-sources.jar
