@@ -2,15 +2,10 @@ name: Publish Mod
 on:
   workflow_dispatch:
     inputs:
-      github_repo:
-        type: string
-        description: "Github Repository"
-        default: "mhay10/IsometricAnimationsMod"
-
       version_number:
         type: string
         description: "Version Number"
-        default: ${{ github.ref_name }}
+        required: true
 
       release_github:
         type: boolean
