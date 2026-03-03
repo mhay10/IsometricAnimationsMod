@@ -25,7 +25,7 @@ during rendering, so the speed of your storage device has a significant impact o
 For the best experience, run Minecraft from an _NVMe SSD_. Rendering on a mechanical drive may result
 in longer render times, stuttering, or incomplete animations.
 
-## Installation
+## Installation``
 
 1. Install [Fabric Loader](https://fabricmc.net/use/) and [Fabric API](https://fabricmc.net/use/)
 2. Download the latest release of this mod from
