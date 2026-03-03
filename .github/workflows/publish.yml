@@ -2,11 +2,6 @@ name: Publish Mod
 on:
   workflow_dispatch:
     inputs:
-      version_number:
-        type: string
-        description: "Version Number"
-        required: true
-
       release_github:
         type: boolean
         description: "Github Release"
@@ -30,13 +25,38 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set Mod Version
+        id: get_version
+        run: |
+          MOD_VERSION="$(.\gradlew properties -q --property mod_version)"
+          echo "MOD_VERSION=$MOD_VERSION" >> $GITHUB_ENV
+          echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
+
       - name: Build with Gradle
         run: ./gradlew clean build
-      
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-jars
+          path: build/libs/*.jar
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      MOD_VERSION: ${{ needs.build.outputs.mod_version }}
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: built-jars
+          path: build/libs
+        
       - name: Publish to GitHub
         if: ${{ inputs.release_github == true }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.version_number }}
+          tag_name: ${{ env.MOD_VERSION }}
           files: build/libs/*.jar
 
