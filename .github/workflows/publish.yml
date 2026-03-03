@@ -12,6 +12,13 @@ on:
         description: "Modrinth Release"
         default: false
 
+env:
+  MINECRAFT_VERSION: 1.21.11
+  JAVA_VERSION: 21
+  VERSION: ${{ github.ref_name }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+
 permissions:
   contents: write
 
@@ -23,10 +30,19 @@ jobs:
         if: ${{ github.event.inputs.release_github == 'true' }}
         uses: Kir-Antipov/mc-publish@v3.3
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ env.VERSION }}
+          version: ${{ env.VERSION }}
+          version-type: release
+
+          loaders: fabric
+          game-versions: ${{ env.MINECRAFT_VERSION }}
+          java: ${{ env.JAVA_VERSION }}
+
+          github-tag: ${{ env.VERSION }}
+          github-token: ${{ env.GITHUB_TOKEN }}
 
       - name: Publish to Modrinth
         if: ${{ github.event.inputs.release_modrinth == 'true' }}
         uses: Kir-Antipov/mc-publish@v3.3
         with:
-            modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+            modrinth-token: ${{ env.MODRINTH_TOKEN }}
