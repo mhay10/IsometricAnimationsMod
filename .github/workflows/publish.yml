@@ -7,6 +7,11 @@ on:
         description: "Github Repository"
         default: "mhay10/IsometricAnimationsMod"
 
+      version_number:
+        type: string
+        description: "Version Number"
+        default: ${{ github.ref_name }}
+
       release_github:
         type: boolean
         description: "Github Release"
@@ -27,12 +32,13 @@ jobs:
       image: mcr.microsoft.com/openjdk/jdk:21-ubuntu
       options: --user root
     steps:
-      - uses: actions/checkout@v4
-      - run: ./gradlew clean build publishMods
-        env:
-          RELEASE_GITHUB: ${{ inputs.release_github }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPO: ${{ inputs.github_repo }}
+      - name: Build Mod
+        run: ./gradlew clean build
 
-          RELEASE_MODRINTH: ${{ inputs.release_modrinth }}
-          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+      - name: Publish to GitHub
+        if: ${{ inputs.release_github == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version_number }}
+          files: build/libs/*.jar
+
