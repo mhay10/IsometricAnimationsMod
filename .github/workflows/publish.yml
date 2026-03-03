@@ -2,6 +2,11 @@ name: Publish Mod
 on:
   workflow_dispatch:
     inputs:
+      github_repo:
+        type: string
+        description: "Github Repository"
+        default: "mhay10/IsometricAnimationsMod"
+
       release_github:
         type: boolean
         description: "Github Release"
@@ -12,38 +17,22 @@ on:
         description: "Modrinth Release"
         default: false
 
-env:
-  MINECRAFT_VERSION: 1.21.11
-  JAVA_VERSION: 21
-  VERSION: ${{ github.ref_name }}
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
-
 permissions:
   contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/openjdk/jdk:21-ubuntu
+      options: --user root
     steps:
-      - name: Publish to Github
-        if: ${{ github.event.inputs.release_github == 'true' }}
-        uses: Kir-Antipov/mc-publish@v3.3
-        with:
-          name: ${{ env.VERSION }}
-          version: ${{ env.VERSION }}
-          version-type: release
+      - uses: actions/checkout@v4
+      - run: ./gradlew clean build publishMods
+        env:
+          RELEASE_GITHUB: ${{ inputs.release_github }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ inputs.github_repo }}
 
-          loaders: fabric
-          game-versions: ${{ env.MINECRAFT_VERSION }}
-          java: ${{ env.JAVA_VERSION }}
-
-          github-tag: ${{ env.VERSION }}
-          github-token: ${{ env.GITHUB_TOKEN }}
-          files: build/libs/*.jar
-
-      - name: Publish to Modrinth
-        if: ${{ github.event.inputs.release_modrinth == 'true' }}
-        uses: Kir-Antipov/mc-publish@v3.3
-        with:
-            modrinth-token: ${{ env.MODRINTH_TOKEN }}
+          RELEASE_MODRINTH: ${{ inputs.release_modrinth }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
