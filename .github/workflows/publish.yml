@@ -25,16 +25,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set Mod Version
+        id: mod_version
+        run: |
+          MOD_VERSION=$(grep '^mod_version=' ./gradle.properties | cut -d '=' -f 2)
+          echo "MOD_VERSION=$MOD_VERSION" >> $GITHUB_ENV
+          echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
 
       - name: Build with Gradle
         run: ./gradlew clean build
-
-      - name: Set Mod Version
-        id: get_version
-        run: |
-          MOD_VERSION="$(./gradlew properties -q --property mod_version | grep mod_version | cut -d ' ' -f 2)"
-          echo "MOD_VERSION=$MOD_VERSION" >> $GITHUB_ENV
-          echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
           
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
@@ -45,8 +44,6 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    env:
-      MOD_VERSION: ${{ needs.build.outputs.mod_version }}
     steps:
       - name: Download Build Artifact
         uses: actions/download-artifact@v4
@@ -58,6 +55,8 @@ jobs:
         if: ${{ inputs.release_github == true }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.MOD_VERSION }}
-          files: build/libs/*.jar
+          tag_name: ${{ needs.build.outputs.mod_version }}
+          files: |
+            build/libs/*.jar
+            !build/lib/*-sources.jar
 
