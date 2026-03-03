@@ -3,13 +3,13 @@
   "id": "isometric-animations",
   "version": "${version}",
   "name": "Isometric Animations",
-  "description": "This is an example description! Tell everyone what your mod is about!",
+  "description": "Creates high-quality animations rendered in an isometric style",
   "authors": [
-    "Me!"
+    "mhay10"
   ],
   "contact": {
-    "homepage": "https://fabricmc.net/",
-    "sources": "https://github.com/FabricMC/fabric-example-mod"
+    "homepage": "https://github.com/mhay10/IsometricAnimationsMod",
+    "sources": "https://github.com/mhay10/IsometricAnimationsMod"
   },
   "license": "CC0-1.0",
   "icon": "assets/isometric-animations/icon.png",
@@ -29,11 +29,14 @@
       "environment": "client"
     }
   ],
-  "accessWidener": "isoanimations.accesswidener",
   "depends": {
     "fabricloader": ">=0.18.4",
     "minecraft": "~1.21.11",
     "java": ">=21",
     "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*",
+    "sodium": "*"
   }
 }

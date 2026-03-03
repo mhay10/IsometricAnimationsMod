@@ -13,10 +13,10 @@ A Minecraft mod that captures sections of your world and renders them as smooth 
 
 ## Dependencies
 
-| Dependency                                | Notes                           |
-|-------------------------------------------|---------------------------------|
-| [Fabric API](https://fabricmc.net/)       | Required                        |
-| [Sodium](https://modrinth.com/mod/sodium) | ⚠️ Currently not fully working! |
+| Dependency                                | Notes                                                      |
+|-------------------------------------------|------------------------------------------------------------|
+| [Fabric API](https://fabricmc.net/)       | Required                                                   |
+| [Sodium](https://modrinth.com/mod/sodium) | ⚠️ Currently not fully working! Output animation is glichy |
 
 ### 🚨 NOTICE 🚨
 
@@ -53,7 +53,7 @@ Clears the current animation state and resets any pending render.
 
 #### `testpos`
 
-Previews the camera position and angle for the selected region **without** creating an animation. 
+Previews the camera position and angle for the selected region **without** creating an animation.
 Use this to adjust your `pitch` and `yaw` before doing a full render.
 
 ```
@@ -64,7 +64,7 @@ Use this to adjust your `pitch` and `yaw` before doing a full render.
 
 #### `create`
 
-Captures the selectedregion and generates an animation.
+Captures the selected region and generates an animation.
 
 ```
 /isoanimations create <pos1> <pos2> <scale> <pitch> <yaw> <duration>
@@ -74,14 +74,14 @@ Captures the selectedregion and generates an animation.
 
 ### Parameters
 
-| Parameter  | Type           | Range     | Description                                            |
-|------------|----------------|:---------:|--------------------------------------------------------|
-| `pos1`     | Block Position | -         | First corner of the capture region                     |
-| `pos2`     | Block Position | -         | Opposite corner of the capture region                  |
-| `scale`    | Integer        | 100 - 500 | Zoom/scale factor of the render (bigger = farther out) |
-| `pitch`    | Integer        | 0 - 360   | Horizontal rotation angle around capture region        |
-| `yaw`      | Integer        | -90 - 90  | Vertical tilt angle around capture region              |
-| `duration` | Decimal        | > 0.0     | Length of animation in seconds (`create` only)         |
+| Parameter  |      Type      |   Range   | Description                                            |
+|------------|:--------------:|:---------:|--------------------------------------------------------|
+| `pos1`     | Block Position |     -     | First corner of the capture region                     |
+| `pos2`     | Block Position |     -     | Opposite corner of the capture region                  |
+| `scale`    |    Integer     | 100 - 500 | Zoom/scale factor of the render (bigger = farther out) |
+| `pitch`    |    Integer     |  0 - 360  | Horizontal rotation angle around capture region        |
+| `yaw`      |    Integer     | -90 - 90  | Vertical tilt angle around capture region              |
+| `duration` |    Decimal     |   > 0.0   | Length of animation in seconds (`create` only)         |
 
 ## Output Files
 
@@ -100,7 +100,8 @@ Generated animations and frames are saved in `.minecraft/isoanimations` using th
 
 ## Reporting Bugs
 
-If you encounter a crash or unexpected behavior, please [open an issue](https://github.com/mhay10/IsometricAnimationsMod/issues) and include:
+If you encounter a crash or unexpected behavior,
+please [open an issue](https://github.com/mhay10/IsometricAnimationsMod/issues) and include:
 
 - Minecraft version
 - Fabric Loader version

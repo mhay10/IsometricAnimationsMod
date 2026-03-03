@@ -1,0 +1,32 @@
+name: Publish Mod
+on:
+  workflow_dispatch:
+    inputs:
+      release_github:
+        type: boolean
+        description: "Github Release"
+        default: false
+
+      release_modrinth:
+        type: boolean
+        description: "Modrinth Release"
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish to Github
+        if: ${{ github.event.inputs.release_github == 'true' }}
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to Modrinth
+        if: ${{ github.event.inputs.release_modrinth == 'true' }}
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+            modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
