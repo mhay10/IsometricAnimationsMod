@@ -28,7 +28,7 @@ jobs:
       - name: Set Mod Version
         id: get_version
         run: |
-          MOD_VERSION="$(.\gradlew properties -q --property mod_version)"
+          MOD_VERSION="$(./gradlew properties -q --property mod_version)"
           echo "MOD_VERSION=$MOD_VERSION" >> $GITHUB_ENV
           echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
 
