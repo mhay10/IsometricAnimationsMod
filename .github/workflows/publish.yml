@@ -26,7 +26,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:      
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+    
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
