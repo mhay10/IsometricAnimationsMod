@@ -47,7 +47,7 @@ jobs:
       - name: Set Mod Version
         id: mod_version
         run: |
-          MOD_VERSION=$(grep '^mod_version=' ./gradle.properties | cut -d '=' -f 2)
+          MOD_VERSION=$(ls build/libs/*.jar | grep -v sources | cut -d '-' -f3 | sed 's/.jar//')
           echo "MOD_VERSION=$MOD_VERSION" >> $GITHUB_ENV
         
       - name: Publish to GitHub
@@ -57,5 +57,5 @@ jobs:
           tag_name: ${{ env.MOD_VERSION }}
           files: |
             build/libs/*.jar
-            !build/lib/*-sources.jar
+            !build/libs/*-sources.jar
 
