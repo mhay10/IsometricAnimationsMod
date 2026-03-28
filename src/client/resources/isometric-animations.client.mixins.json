@@ -4,11 +4,12 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "AbstractClientPlayerMixin",
+    "CameraMixin",
+    "FogRendererMixin",
+    "LevelRendererMixin",
+    "WindowMixin",
     "vanilla.BlockEntityRenderDispatcherMixin",
     "vanilla.EntityRenderDispatcherMixin",
-    "FogRendererMixin",
-    "WindowMixin",
-    "LevelRendererMixin",
     "vanilla.RenderSectionRegionMixin"
   ],
   "injectors": {

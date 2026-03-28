@@ -104,48 +104,53 @@ public class CreateAnimationCommand {
         preAnimationInit(source, ioReady);
 
         // Register on client tick event to manage animation state and frame capture
-        AtomicBoolean waitingForReload = new AtomicBoolean(true);
-        AtomicInteger waitTicks = new AtomicInteger(0);
-        final int waitThreshold = 15;
-        ClientTickEvents.EndTick animationEvent = (client) -> {
-            if (waitingForReload.get()) {
-                // Increment wait ticks while waiting for chunks to reload
-                waitTicks.incrementAndGet();
-
-                // Wait until io operations are done and all chunks are loaded before starting animation
-                var dispatcher = client.levelRenderer.getSectionRenderDispatcher();
-                if (ioReady.get() && waitTicks.get() > waitThreshold && dispatcher.isQueueEmpty()) {
-                    waitingForReload.set(false);
-
-                    // Start animation frame capture
-                    AnimationManager.startAnimation();
-                    CommandRunner.runCommand("/tick step %d".formatted(durationTicks));
-                }
-
-                // Block rest of event while waiting to start
-                return;
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Start animation after IO is ready
+            if (ioReady.get() && !AnimationManager.isAnimating()) {
+                AnimationManager.startAnimation();
+                CommandRunner.runCommand("/tick step %d".formatted(durationTicks));
             }
 
-            // Stop recording after duration has passed
+            // Wait for end of animation
             if (AnimationManager.isAnimating() && client.level.getGameTime() >= AnimationManager.getEndTick()) {
-                // Cleanup animation state and reset player
-                postAnimationCleanup(source, origPlayerPos, xRot, yRot, origFps);
-
-                // Notify user about frame generation status
-                source.sendFeedback(
-                        Component.literal("Frame generation complete. Waiting for frame exports to finish...").withStyle(ChatFormatting.YELLOW)
-                );
-
-                // Wait for frame exports to finish before starting video creation
-                CompletableFuture.runAsync(FrameExportManager::waitForExportFinish).thenRun(() -> {
-                    client.execute(() -> source.sendFeedback(
-                            Component.literal("Creating animation from frames. This may take a while...").withStyle(ChatFormatting.YELLOW)
-                    ));
-                    FrameAssemblerManager.createAnimation(source);
-                });
+                postAnimationCleanup(source, origFps);
             }
-        };
-        ClientTickEvents.END_CLIENT_TICK.register(animationEvent);
+        });
+
+//        AtomicBoolean waitingForReload = new AtomicBoolean(true);
+//        AtomicInteger waitTicks = new AtomicInteger(0);
+//        final int waitThreshold = 15;
+//        ClientTickEvents.EndTick animationEvent = (client) -> {
+//            if (waitingForReload.get()) {
+//                // Increment wait ticks while waiting for chunks to reload
+//                waitTicks.incrementAndGet();
+//
+//                // Wait until io operations are done and all chunks are loaded before starting animation
+//                var dispatcher = client.levelRenderer.getSectionRenderDispatcher();
+//                if (ioReady.get() && waitTicks.get() > waitThreshold && dispatcher.isQueueEmpty()) {
+//                    waitingForReload.set(false);
+//
+//                    // Start animation frame capture
+//                    AnimationManager.startAnimation();
+//                    CommandRunner.runCommand("/tick step %d".formatted(durationTicks));
+//                }
+//
+//                // Block rest of event while waiting to start
+//                return;
+//            }
+//
+//            // Stop recording after duration has passed
+//            if (AnimationManager.isAnimating() && client.level.getGameTime() >= AnimationManager.getEndTick()) {
+//                // Cleanup animation state and reset player
+//                postAnimationCleanup(source, origPlayerPos, origFps);
+//
+//                // Notify user about frame generation status
+//                source.sendFeedback(
+//                        Component.literal("Frame generation complete. Waiting for frame exports to finish...").withStyle(ChatFormatting.YELLOW)
+//                );
+//            }
+//        };
+//        ClientTickEvents.END_CLIENT_TICK.register(animationEvent);
 
         return 1;
     }
@@ -165,8 +170,7 @@ public class CreateAnimationCommand {
             BufferPool.init(width * height * 3);
 
             // Initialize frame export and assembler managers
-            FrameExportManager.init();
-            FrameAssemblerManager.init();
+            VideoStreamManager.startRecording(width, height);
 
             // Wait a moment to ensure everything is ready
             try {
@@ -181,26 +185,29 @@ public class CreateAnimationCommand {
         CommandRunner.runCommand("/tick rate %s".formatted(RenderConfig.tickRate));
     }
 
-    private static void postAnimationCleanup(FabricClientCommandSource source, Vec3 origPlayerPos, float origXRot, float origYRot, int origFps) {
+    private static void postAnimationCleanup(FabricClientCommandSource source, int origFps) {
+        VideoStreamManager.stopRecording(source);
+
         // Stop and clear animation state
         AnimationManager.stopAnimation();
         AnimationManager.clearAnimation();
         source.getClient().options.hideGui = false; // Unhide GUI after animation
 
         // Reset render transformations and player position
-        CommandRunner.runCommand("/tp @s %s %s %s".formatted(origPlayerPos.x, origPlayerPos.y, origPlayerPos.z));
-        source.getPlayer().setXRot(origXRot);
-        source.getPlayer().setYRot(origYRot);
+        CameraManager.reset();
+//        CommandRunner.runCommand("/tp @s %s %s %s".formatted(origPlayerPos.x, origPlayerPos.y, origPlayerPos.z));
+//        source.getPlayer().setXRot(origXRot);
+//        source.getPlayer().setYRot(origYRot);
 
         // Reset original game settings
-        source.getClient().options.framerateLimit().set(origFps);
-        CommandRunner.runCommand("/tick rate %f".formatted(RenderConfig.TICKS_PER_SECOND));
+//        source.getClient().options.framerateLimit().set(origFps);
+//        CommandRunner.runCommand("/tick rate %f".formatted(RenderConfig.TICKS_PER_SECOND));
 
         // Reload chunks to reset render changes
-        source.getClient().execute(source.getClient().levelRenderer::allChanged);
+//        source.getClient().execute(source.getClient().levelRenderer::allChanged);
 
         // Cleanup PBOs after animation is done
-        FrameCaptureManager.cleanupPBOs();
+//        FrameCaptureManager.cleanupPBOs();
     }
 
     private static int positionPlayer(CommandContext<FabricClientCommandSource> context) {
@@ -216,19 +223,31 @@ public class CreateAnimationCommand {
         var source = context.getSource();
         Vector3f renderPos = RenderManager.getRenderPosition(config.pos1(), config.pos2(), source.getPlayer().position(), 30);
         Vector3f centerPos = RenderManager.getCenterPosition(config.pos1(), config.pos2());
-        CommandRunner.runCommand("/tp @s %s %s %s".formatted(renderPos.x, renderPos.y, renderPos.z));
+
+        // Calculate pitch and yaw for center of reigon
+        double dx = centerPos.x - renderPos.x;
+        double dy = centerPos.y - renderPos.y;
+        double dz = centerPos.z - renderPos.z;
+        double distXZ = Math.sqrt(dx * dx + dz * dz);
+
+        float pitch = (float) -(Math.atan2(dy, distXZ) * (180 / Math.PI));
+        float yaw = (float) (Math.atan2(dz, dx) * (180 / Math.PI)) - 90.0f;
+        CameraManager.setCamera(new Vec3(renderPos), pitch, yaw);
+
+
+//        CommandRunner.runCommand("/tp @s %s %s %s".formatted(renderPos.x, renderPos.y, renderPos.z));
 
         // Make sure world is loaded
-        source.getClient().getSingleplayerServer().saveEverything(false, true, false);
+//        source.getClient().getSingleplayerServer().saveEverything(false, true, false);
 
         // Position player on client thread
-        source.getClient().execute(() -> {
-            // Look at center of animation region
-            source.getClient().player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(centerPos));
-
-            // Try to prevent camera clipping region
-            CommandRunner.runCommand("/tp @s ~ ~0.5 ~");
-        });
+//        source.getClient().execute(() -> {
+//            // Look at center of animation region
+//            source.getClient().player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(centerPos));
+//
+//            // Try to prevent camera clipping region
+//            CommandRunner.runCommand("/tp @s ~ ~0.5 ~");
+//        });
 
         return 1;
     }

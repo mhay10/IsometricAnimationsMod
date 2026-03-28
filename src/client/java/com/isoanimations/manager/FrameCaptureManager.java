@@ -65,35 +65,32 @@ public class FrameCaptureManager {
         pboIndex = (pboIndex + 1) % pbos.length;
         int nextIndex = (pboIndex + 1) % pbos.length;
 
-        // Bind current PBO and read pixels into it
+        // Read current frame into PBO
         GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pbos[pboIndex]);
+        GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1); // Pack pixels with 1 byte alignment and no padding
         GL11.glReadPixels(0, 0, width, height, GL15.GL_BGR, GL11.GL_UNSIGNED_BYTE, 0);
+        GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 4); // Restore default unpack alignment
 
-        // Bind PBO for reading the previous frame's data
         if (!isFirstFrame) {
-            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pbos[nextIndex]);
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pbos[pboIndex]);
 
-            // Map buffer to CPU memory
-            ByteBuffer buffer = GL15.glMapBuffer(GL21.GL_PIXEL_PACK_BUFFER, GL15.GL_READ_ONLY, null);
-            if (buffer != null) {
-                // Try to put data into buffer pool
-                ByteBuffer frameData = BufferPool.tryGetBuffer();
-                if (frameData != null) {
-                    // Transfer data from PBO buffer to frameData buffer
-                    frameData.put(buffer);
-                    frameData.flip();
+            // Wait until encoder ready for next frame
+            ByteBuffer frameData = BufferPool.getBufferBlocking();
+            if (frameData != null) {
+                try {
+                    int frameSize = width * height * 3; // BGR
+                    frameData.clear();
+                    frameData.limit(frameSize);
 
-                    // Unmap buffer after reading
-                    GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
+                    // Directly transfer data from PBO into buffer
+                    GL15.glGetBufferSubData(GL21.GL_PIXEL_PACK_BUFFER, 0, frameData);
 
-                    // Process frame data in separate thread
-                    FrameExportManager.queueFrameExport(frameData, width, height);
-                } else {
-                    GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
-                    LOGGER.warn("Export thread too slow! Dropping frame");
+                    // Add frame to encoder queue
+                    VideoStreamManager.addFrameToQueue(frameData);
+                } catch (Exception e) {
+                    LOGGER.error("Failed to export frame data", e);
+                    BufferPool.returnBuffer(frameData);
                 }
-
-
             }
         }
 
