@@ -3,6 +3,7 @@ package com.isoanimations.manager;
 import com.isoanimations.config.PathConfig;
 import com.isoanimations.config.RenderConfig;
 import com.isoanimations.util.BufferPool;
+import com.isoanimations.util.ExportFrame;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -10,7 +11,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import org.bytedeco.ffmpeg.global.avcodec;
 import org.bytedeco.ffmpeg.global.avutil;
-import org.bytedeco.javacpp.BytePointer;
+import org.bytedeco.javacv.FFmpegFrameFilter;
 import org.bytedeco.javacv.FFmpegFrameRecorder;
 import org.bytedeco.javacv.Frame;
 
@@ -37,7 +38,7 @@ public class VideoStreamManager {
     // Threading controls
     private static Thread encodingThread;
     private static volatile boolean isRecording = false;
-    private static final BlockingQueue<ByteBuffer> frameQueue = new LinkedBlockingQueue<>();
+    private static final BlockingQueue<ExportFrame> frameQueue = new LinkedBlockingQueue<>(10);
 
     public static void startRecording(int width, int height) {
         if (!PathConfig.ANIMATION_EXPORT_DIR.toFile().exists()) {
@@ -46,7 +47,7 @@ public class VideoStreamManager {
 
         // Set output filepath
         Calendar now = Calendar.getInstance();
-        String filename = "animation_%04d_%02d_%d_%02d-%02d-%02d.mkv".formatted(
+        String filename = "animation_%04d_%02d_%d_%02d-%02d-%02d.mp4".formatted(
                 now.get(Calendar.YEAR),
                 now.get(Calendar.MONTH) + 1,
                 now.get(Calendar.DAY_OF_MONTH),
@@ -57,25 +58,19 @@ public class VideoStreamManager {
         outputFilePath = PathConfig.ANIMATION_EXPORT_DIR.resolve(filename);
 
         try {
+
             // Setup recorder
             recorder = new FFmpegFrameRecorder(outputFilePath.toString(), width, height);
-            recorder.setFormat("matroksa");
+            recorder.setFormat("mp4");
             recorder.setVideoCodec(avcodec.AV_CODEC_ID_H264);
             recorder.setFrameRate(RenderConfig.outputFps);
             recorder.setPixelFormat(avutil.AV_PIX_FMT_YUV420P);
-
-            // Optimization flags hopefully
-            recorder.setVideoOption("preset", "ultrafast");
-            recorder.setVideoOption("tune", "zerolatency");
-            recorder.setOption("flush_packets", "1");
-//            recorder.setOption("mov_flags", "frag_keyframe+empty_moov");
-            recorder.setAudioChannels(0);
-//            recorder.setMaxDelay(1);
+//            recorder.setVideoOption("crf", "18");
+//            recorder.setOption("movflags", "frag_keyframe+empty_moov");
 
             // Start recorder
             recorder.start();
             frameCount = 0;
-
 
             // Create reusable frame object
             cvFrame = new Frame(width, height, Frame.DEPTH_UBYTE, 3); // 8 bit depth, BGR color
@@ -94,34 +89,77 @@ public class VideoStreamManager {
         }
     }
 
-    public static void addFrameToQueue(ByteBuffer frameData) {
+    public static void addFrameToQueue(ExportFrame frame) {
         if (isRecording) {
-            frameQueue.add(frameData);
+            try {
+                frameQueue.put(frame);
+            } catch (InterruptedException e) {
+                LOGGER.error("Interrupted while adding frame to queue", e);
+                BufferPool.returnBuffer(frame.frameData);
+                Thread.currentThread().interrupt();
+            }
         } else {
-            BufferPool.returnBuffer(frameData);
+            BufferPool.returnBuffer(frame.frameData);
         }
     }
 
     private static void encodingLoop() {
+        // Setup arrays for vertical flip
+        int width = cvFrame.imageWidth;
+        int height = cvFrame.imageHeight;
+        int pixelStride = width * 3;
+        byte[] rowTop = new byte[pixelStride];
+        byte[] rowBottom = new byte[pixelStride];
+
+        // Keep track of first frame timestamp
+        long firstFrameTime = -1;
+
         // Encode frames until all frames gone from recording session
         while (isRecording || !frameQueue.isEmpty()) {
             try {
                 // Wait up to 10ms to get next frame from queue
-                ByteBuffer buffer = frameQueue.poll(10, TimeUnit.MILLISECONDS);
-                if (buffer != null) {
+                ExportFrame frame = frameQueue.poll(10, TimeUnit.MILLISECONDS);
+                if (frame != null) {
                     // Set frame data to export frame
+                    ByteBuffer buffer = frame.frameData;
+                    buffer.rewind();
+
+                    // Flip frame vertically to correct OpenGL coordinates
+                    for (int i = 0; i < height / 2; i++) {
+                        // Get top and bottom offsets
+                        int topOffset = i * pixelStride;
+                        int bottomOffset = (height - 1 - i) * pixelStride;
+
+                        // Read top and bottom rows
+                        buffer.position(topOffset);
+                        buffer.get(rowTop);
+                        buffer.position(bottomOffset);
+                        buffer.get(rowBottom);
+
+                        // Swap rows in buffer
+                        buffer.position(topOffset);
+                        buffer.put(rowBottom);
+                        buffer.position(bottomOffset);
+                        buffer.put(rowTop);
+                    }
+
+                    // Save frame data to export frame
                     buffer.rewind();
                     nativeFrameBuffer.clear();
                     nativeFrameBuffer.put(buffer);
                     nativeFrameBuffer.rewind();
 
-                    // Calculate timestamp in microseconds
-                    long timestamp = (frameCount * 1000000L) / Math.round(RenderConfig.outputFps);
-                    recorder.setTimestamp(timestamp);
+                    // Calculate relative timestamp
+                    if (firstFrameTime == -1) {
+                        firstFrameTime = frame.timestampMicros;
+                    }
+                    cvFrame.timestamp = frame.timestampMicros - firstFrameTime;
 
-                    // Record frame and return buffer
-//                    recorder.record(cvFrame);
+                    // Record filtered frame
+                    recorder.record(cvFrame);
                     frameCount++;
+
+                    // Return buffer to pool after encoding
                     BufferPool.returnBuffer(buffer);
                 }
             } catch (Exception e) {

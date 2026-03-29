@@ -1,103 +1,43 @@
 package com.isoanimations.manager;
 
 import com.isoanimations.util.BufferPool;
+import com.isoanimations.util.ExportFrame;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL21;
 
 import java.nio.ByteBuffer;
 
 import static com.isoanimations.IsometricAnimations.LOGGER;
 
 public class FrameCaptureManager {
-    private static int lastWidth = 0;
-    private static int lastHeight = 0;
-
-    private static final int[] pbos = new int[2];
-    private static int pboIndex = 0;
-    private static boolean isFirstFrame = true;
-
-    public static void initPBOs(int width, int height) {
-        // Initialize PBOs with empty data
-        int dataSize = width * height * 3; // BGR format
-        for (int i = 0; i < pbos.length; i++) {
-            pbos[i] = GL15.glGenBuffers();
-            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pbos[i]);
-            GL15.glBufferData(GL21.GL_PIXEL_PACK_BUFFER, dataSize, GL15.GL_STREAM_READ);
-        }
-
-        // Unbind PBOs
-        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
-    }
-
-    public static void cleanupPBOs() {
-        for (int i = 0; i < pbos.length; i++) {
-            // Delete PBO if it exists
-            if (pbos[i] != 0) {
-                GL15.glDeleteBuffers(pbos[i]);
-                pbos[i] = 0;
-            }
-        }
-
-        // Reset state
-        isFirstFrame = true;
-        lastWidth = 0;
-        lastHeight = 0;
-    }
-
     public static void captureFrame() {
-        // Get current window dimensions
         Window window = Minecraft.getInstance().getWindow();
         int width = window.getWidth();
         int height = window.getHeight();
 
-        // Reinitialize PBOs if dimensions changed
-        if (width != lastWidth || height != lastHeight) {
-            cleanupPBOs();
-            initPBOs(width, height);
-            lastWidth = width;
-            lastHeight = height;
-        }
+        // Block until buffer available
+        ByteBuffer frameData = BufferPool.getBufferBlocking();
+        if (frameData != null) {
+            try {
+                // Set frame buffer properties
+                int frameSize = width * height * 3; // BGR format
+                frameData.clear();
+                frameData.limit(frameSize);
 
-        // Update PBO indexes
-        pboIndex = (pboIndex + 1) % pbos.length;
-        int nextIndex = (pboIndex + 1) % pbos.length;
+                // Read pixels into framebuffer
+                GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1); // Pack with 1 byte alignment + no padding
+                GL11.glReadPixels(0, 0, width, height, GL15.GL_BGR, GL11.GL_UNSIGNED_BYTE, frameData);
+                GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 4); // Restore default unpack alignment
 
-        // Read current frame into PBO
-        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pbos[pboIndex]);
-        GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1); // Pack pixels with 1 byte alignment and no padding
-        GL11.glReadPixels(0, 0, width, height, GL15.GL_BGR, GL11.GL_UNSIGNED_BYTE, 0);
-        GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 4); // Restore default unpack alignment
-
-        if (!isFirstFrame) {
-            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pbos[pboIndex]);
-
-            // Wait until encoder ready for next frame
-            ByteBuffer frameData = BufferPool.getBufferBlocking();
-            if (frameData != null) {
-                try {
-                    int frameSize = width * height * 3; // BGR
-                    frameData.clear();
-                    frameData.limit(frameSize);
-
-                    // Directly transfer data from PBO into buffer
-                    GL15.glGetBufferSubData(GL21.GL_PIXEL_PACK_BUFFER, 0, frameData);
-
-                    // Add frame to encoder queue
-                    VideoStreamManager.addFrameToQueue(frameData);
-                } catch (Exception e) {
-                    LOGGER.error("Failed to export frame data", e);
-                    BufferPool.returnBuffer(frameData);
-                }
+                // Queue frame for encoding
+                long captureTime = System.nanoTime() / 1000;
+                VideoStreamManager.addFrameToQueue(new ExportFrame(frameData, captureTime));
+            } catch (Exception e) {
+                LOGGER.error("Failed to capture frame", e);
+                BufferPool.returnBuffer(frameData);
             }
         }
-
-        // Prepare for next frame capture
-        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0); // Unbind PBO
-        isFirstFrame = false;
-        lastWidth = width;
-        lastHeight = height;
     }
 }

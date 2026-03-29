@@ -48,6 +48,7 @@ public class AnimationManager {
 
     public static void stopAnimation() {
         isAnimating.set(false);
+        animationFinished.set(true);
     }
 
     public static BlockPos getPos1() {
