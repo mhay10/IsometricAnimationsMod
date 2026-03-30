@@ -8,15 +8,21 @@ import net.minecraft.world.phys.AABB;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AnimationManager {
+    // Animation Region
     private static AABB activeRegion = null;
     private static BlockPos pos1;
     private static BlockPos pos2;
+
+    // Animation State
     private static final AtomicBoolean isAnimating = new AtomicBoolean(false);
     private static final AtomicBoolean animationFinished = new AtomicBoolean(false);
+    private static boolean testingPosition = false;
 
+    // Animation Config
     private static int durationTicks;
     private static long startTick;
     private static long endTick;
+    private static int originalFps;
 
     public static void createAnimation(BlockPos pos1, BlockPos pos2, int durationTicks) {
         clearAnimation();
@@ -39,6 +45,9 @@ public class AnimationManager {
         startTick = -1;
         endTick = -1;
         durationTicks = 0;
+        isAnimating.set(false);
+        animationFinished.set(false);
+        testingPosition = false;
     }
 
     public static void startAnimation() {
@@ -81,5 +90,21 @@ public class AnimationManager {
 
     public static long getEndTick() {
         return endTick;
+    }
+
+    public static void setOriginalFps(int fps) {
+        originalFps = fps;
+    }
+
+    public static int getOriginalFps() {
+        return originalFps;
+    }
+
+    public static void setTestingPosition(boolean isTesting) {
+        testingPosition = isTesting;
+    }
+
+    public static boolean isTestingPosition() {
+        return testingPosition;
     }
 }

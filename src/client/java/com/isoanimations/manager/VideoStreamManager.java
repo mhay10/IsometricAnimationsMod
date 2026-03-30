@@ -172,9 +172,11 @@ public class VideoStreamManager {
             if (recorder != null) {
                 recorder.stop();
                 recorder.release();
+                recorder = null;
             }
             if (cvFrame != null) {
                 cvFrame.close();
+                cvFrame = null;
             }
         } catch (Exception e) {
             LOGGER.error("Failed to stop recorder", e);
@@ -205,6 +207,10 @@ public class VideoStreamManager {
                 LOGGER.error("Interrupted while waiting for encoding thread", e);
             }
         });
+    }
+
+    public static boolean isExporting() {
+        return isRecording || (encodingThread != null && encodingThread.isAlive());
     }
 
     private static void sendOpenVideoMessage(FabricClientCommandSource source) {

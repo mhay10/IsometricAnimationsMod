@@ -16,13 +16,16 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
+import org.opencv.video.Video;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT;
 
 public class CreateAnimationCommand {
+    private static boolean eventRegistered = false;
+    private static long chunkReloadStartTime = 0;
+
     public static void registerCommand() {
         EVENT.register((dispatcher, registryAccess) ->
                 dispatcher.register(ClientCommandManager.literal("isoanimations")
@@ -47,7 +50,10 @@ public class CreateAnimationCommand {
                     .executes(CreateAnimationCommand::newAnimation));
         } else {
             // Only position player without creating animation
-            yawArg.executes(CreateAnimationCommand::positionCamera);
+            yawArg.executes(context -> {
+                AnimationManager.setTestingPosition(true);
+                return positionCamera(context);
+            });
         }
 
         // Build rest of arguments
@@ -75,15 +81,19 @@ public class CreateAnimationCommand {
             return 0;
         }
 
+        // Check if previous animation is still exporting
+        if (VideoStreamManager.isExporting()) {
+            source.sendError(Component.literal("Cannot start new animation. Thr previous animation is still exporting"));
+            return 0;
+        }
+
         // Parse command arguments
         AnimationConfig config = AnimationConfig.parse(context, true);
         int durationTicks = (int) Math.ceil(config.duration() * RenderConfig.TICKS_PER_SECOND); // Convert seconds to ticks
 
         // Store original settings for reset after animation
-        Vec3 origPlayerPos = source.getPlayer().position();
-        float xRot = source.getPlayer().getXRot();
-        float yRot = source.getPlayer().getYRot();
         int origFps = source.getClient().options.framerateLimit().get();
+        AnimationManager.setOriginalFps(origFps);
 
         // Notify user about animation creation and settings
         source.sendFeedback(
@@ -94,53 +104,67 @@ public class CreateAnimationCommand {
         // Create new animation region
         AnimationManager.createAnimation(config.pos1(), config.pos2(), durationTicks);
 
-        // Initialize animation state and player position
-        AtomicBoolean ioReady = new AtomicBoolean(false);
+        // Initialize animation state and camera position
         positionCamera(context);
-        preAnimationInit(source, ioReady);
+        preAnimationInit(source);
 
         // Register on client tick event to manage animation state and frame capture
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            // Start animation after IO is ready
-            if (ioReady.get() && !AnimationManager.isAnimating() && !AnimationManager.isAnimationFinished()) {
-                AnimationManager.startAnimation();
-                CommandRunner.runCommand("/tick step %d".formatted(durationTicks));
-            }
+        if (!eventRegistered) {
+            ClientTickEvents.END_CLIENT_TICK.register(client -> {
+                // Exit if no animation region active
+                if (AnimationManager.getActiveRegion() == null) {
+                    return;
+                }
 
-            // Wait for end of animation
-            if (AnimationManager.isAnimating() && client.level.getGameTime() >= AnimationManager.getEndTick()) {
-                postAnimationCleanup(source, origFps);
-            }
-        });
+                // ===== START ANIMATION LOGIC =====
+                if (!AnimationManager.isAnimating() && !AnimationManager.isAnimationFinished()) {
+                    // Wait for chunk compiler to populate queue
+                    if (System.currentTimeMillis() - chunkReloadStartTime < 1000) {
+                        return;
+                    }
+
+                    // Wait for chunk compiler to finish building meshes
+                    boolean chunksCompiling = !client.levelRenderer.getSectionRenderDispatcher().isQueueEmpty();
+                    if (chunksCompiling) {
+                        return;
+                    }
+
+                    // Start animation after chunks fully loaded
+                    AnimationManager.startAnimation();
+                    CommandRunner.runCommand("/tick step %d".formatted(AnimationManager.getDurationTicks()));
+                }
+
+                // ===== END ANIMATION LOGIC =====
+                if (AnimationManager.isAnimating() && client.level.getGameTime() >= AnimationManager.getEndTick()) {
+                    postAnimationCleanup(source, AnimationManager.getOriginalFps());
+                }
+            });
+
+            eventRegistered = true;
+        }
 
         return 1;
     }
 
-    private static void preAnimationInit(FabricClientCommandSource source, AtomicBoolean ioReady) {
+    private static void preAnimationInit(FabricClientCommandSource source) {
         // Reload chunks to ensure all render changes are applied before starting animation
         source.getClient().execute(source.getClient().levelRenderer::allChanged);
 
-        // Initialize frame managers in separate thread
+        // Initialize buffer pool based on window dimensions
         int width = source.getClient().getWindow().getWidth();
         int height = source.getClient().getWindow().getHeight();
-        CompletableFuture.runAsync(() -> {
-            // Initialize buffer pool based on render dimensions
-            BufferPool.init(width * height * 3);
+        BufferPool.init(width * height * 3);
 
-            // Start streaming thread to encode frames in background
-            VideoStreamManager.startRecording(width, height);
-
-            // Wait a moment to ensure everything is ready
-            try {
-                Thread.sleep(250);
-            } catch (Exception ignored) {
-            }
-        }).thenRun(() -> ioReady.set(true)); // Set IO ready flag after initialization is complete
+        // Start streaming thread to encode frames
+        VideoStreamManager.startRecording(width, height);
 
         // Set render settings for animation
         source.getClient().options.hideGui = true;
         source.getClient().options.framerateLimit().set(RenderConfig.renderFps);
         CommandRunner.runCommand("/tick rate %s".formatted(RenderConfig.tickRate));
+
+        // Record time chunks were reloaded
+        chunkReloadStartTime = System.currentTimeMillis();
     }
 
     private static void postAnimationCleanup(FabricClientCommandSource source, int origFps) {
@@ -176,6 +200,9 @@ public class CreateAnimationCommand {
         Vector3f renderPos = RenderManager.getRenderPosition(config.pos1(), config.pos2(), source.getPlayer().position(), 30);
         Vector3f centerPos = RenderManager.getCenterPosition(config.pos1(), config.pos2());
 
+        // Offset Y pos to help center camera
+        renderPos.y += 0.5f;
+
         // Calculate pitch and yaw for center of reigon
         double dx = centerPos.x - renderPos.x;
         double dy = centerPos.y - renderPos.y;
@@ -185,21 +212,6 @@ public class CreateAnimationCommand {
         float pitch = (float) -(Math.atan2(dy, distXZ) * (180 / Math.PI));
         float yaw = (float) (Math.atan2(dz, dx) * (180 / Math.PI)) - 90.0f;
         CameraManager.setCamera(new Vec3(renderPos), pitch, yaw);
-
-
-//        CommandRunner.runCommand("/tp @s %s %s %s".formatted(renderPos.x, renderPos.y, renderPos.z));
-
-        // Make sure world is loaded
-//        source.getClient().getSingleplayerServer().saveEverything(false, true, false);
-
-        // Position player on client thread
-//        source.getClient().execute(() -> {
-//            // Look at center of animation region
-//            source.getClient().player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(centerPos));
-//
-//            // Try to prevent camera clipping region
-//            CommandRunner.runCommand("/tp @s ~ ~0.5 ~");
-//        });
 
         return 1;
     }

@@ -15,7 +15,7 @@ public class AbstractClientPlayerMixin {
     private void getFieldOfViewModifier(CallbackInfoReturnable<Float> cir) {
         // Set low FOV while animation region active
         AABB activeRegion = AnimationManager.getActiveRegion();
-        if (activeRegion != null) {
+        if (activeRegion != null || AnimationManager.isTestingPosition()) {
             // Calculate FOV multiplier
             float targetFov = 20.0f;
             float baseFov = Minecraft.getInstance().options.fov().get().floatValue();
