@@ -1,4 +1,4 @@
-package com.isoanimations.mixin.client.vanilla;
+package com.isoanimations.mixin.client;
 
 import com.isoanimations.manager.AnimationManager;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -24,5 +24,4 @@ public class EntityRenderDispatcherMixin {
             }
         }
     }
-
 }

@@ -2,15 +2,20 @@
   "required": true,
   "package": "com.isoanimations.mixin.client",
   "compatibilityLevel": "JAVA_21",
+  "plugin": "com.isoanimations.mixin.SodiumMixinPlugin",
   "client": [
+    // Global Mixins
     "AbstractClientPlayerMixin",
     "CameraMixin",
     "FogRendererMixin",
-    "LevelRendererMixin",
     "WindowMixin",
-    "vanilla.BlockEntityRenderDispatcherMixin",
-    "vanilla.EntityRenderDispatcherMixin",
-    "vanilla.RenderSectionRegionMixin"
+    "BlockEntityRenderDispatcherMixin",
+    "EntityRenderDispatcherMixin",
+    "LevelRendererMixin",
+    // Vanilla Render Engine Mixin
+    "vanilla.RenderSectionRegionMixin",
+    // Sodium Render Engine Mixin
+    "sodium.LevelSliceMixin"
   ],
   "injectors": {
     "defaultRequire": 1
