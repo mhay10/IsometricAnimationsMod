@@ -10,8 +10,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class AnimationManager {
     // Animation Region
     private static AABB activeRegion = null;
-    private static BlockPos pos1;
-    private static BlockPos pos2;
+    private static BlockPos minPos;
+    private static BlockPos maxPos;
+
+    // Fast Access for Region Checks
+    public static int minX, minY, minZ;
+    public static int maxX, maxY, maxZ;
+    public static boolean hasActiveRegion = false;
+
 
     // Animation State
     private static final AtomicBoolean isAnimating = new AtomicBoolean(false);
@@ -28,9 +34,18 @@ public class AnimationManager {
         clearAnimation();
 
         // Setup region states
-        AnimationManager.pos1 = pos1;
-        AnimationManager.pos2 = pos2;
+        AnimationManager.minPos = BlockPos.min(pos1, pos2);
+        AnimationManager.maxPos = BlockPos.max(pos2, pos2);
         activeRegion = AABB.of(BoundingBox.fromCorners(pos1, pos2));
+
+        // Calculate min/max for easier checks
+        minX = AnimationManager.minPos.getX();
+        minY = AnimationManager.minPos.getY();
+        minZ = AnimationManager.minPos.getZ();
+        maxX = AnimationManager.maxPos.getX();
+        maxY = AnimationManager.maxPos.getY();
+        maxZ = AnimationManager.maxPos.getZ();
+        hasActiveRegion = true;
 
         // Setup time states
         AnimationManager.durationTicks = durationTicks;
@@ -40,11 +55,15 @@ public class AnimationManager {
 
     public static void clearAnimation() {
         activeRegion = null;
-        pos1 = null;
-        pos2 = null;
+        hasActiveRegion = false;
+
+        minPos = null;
+        maxPos = null;
+
         startTick = -1;
         endTick = -1;
         durationTicks = 0;
+
         isAnimating.set(false);
         animationFinished.set(false);
         testingPosition = false;
@@ -60,12 +79,16 @@ public class AnimationManager {
         animationFinished.set(true);
     }
 
-    public static BlockPos getPos1() {
-        return pos1;
+    public static boolean inActiveRegion(int x, int y, int z) {
+        return activeRegion.contains(x, y, z);
     }
 
-    public static BlockPos getPos2() {
-        return pos2;
+    public static BlockPos getMinPos() {
+        return minPos;
+    }
+
+    public static BlockPos getMaxPos() {
+        return maxPos;
     }
 
     public static AABB getActiveRegion() {

@@ -15,15 +15,15 @@ public class SodiumMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        LOGGER.info("Using Sodium render mixin: {}", SODIUM_LOADED);
+
         // Vanilla Chunk Mixin: skip if Sodium installed
         if (mixinClassName.endsWith("RenderSectionRegionMixin")) {
-            LOGGER.info("RegionSectionRegionMixin --> Sodium detected: {}", SODIUM_LOADED);
             return !SODIUM_LOADED;
         }
 
         // Sodium Chunk Mixin: skip if Sodium not installed
         if (mixinClassName.endsWith("LevelSliceMixin")) {
-            LOGGER.info("LevelSliceMixin --> Sodium detected: {}", SODIUM_LOADED);
             return SODIUM_LOADED;
         }
 

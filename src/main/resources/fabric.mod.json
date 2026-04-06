@@ -36,7 +36,10 @@
     "fabric-api": "*"
   },
   "suggests": {
-    "sodium": "*",
+    "sodium": ">=0.8.7",
     "modmenu": "*"
+  },
+  "breaks": {
+    "sodium": "<0.8.7"
   }
 }

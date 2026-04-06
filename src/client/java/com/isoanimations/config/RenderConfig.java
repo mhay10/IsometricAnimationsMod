@@ -9,7 +9,6 @@ public class RenderConfig {
     public static final double TICKS_PER_SECOND = 20;
     public static int renderFps = 60;
     public static double tickRate = 5;
-    public static final double outputFps = (renderFps * TICKS_PER_SECOND) / tickRate;
     private static File configFile = new File(PathConfig.ISOANIMATIONS_ROOT.resolve("render.cfg").toUri());
 
     public static void loadConfig() {
@@ -19,6 +18,8 @@ public class RenderConfig {
                 props.load(reader);
                 renderFps = Integer.parseInt(props.getProperty("render_fps", String.valueOf(renderFps)));
                 tickRate = Double.parseDouble(props.getProperty("tick_rate", String.valueOf(tickRate)));
+
+                LOGGER.info("Rendering videos at {} FPS and {} TPS", renderFps, tickRate);
             } catch (Exception e) {
                 LOGGER.error("Failed to load render config, using defaults: ", e);
             }
@@ -54,5 +55,9 @@ public class RenderConfig {
 
     public static void setTickRate(double tickRate) {
         RenderConfig.tickRate = tickRate;
+    }
+
+    public static double getOutputFps() {
+        return (renderFps * TICKS_PER_SECOND) / tickRate;
     }
 }

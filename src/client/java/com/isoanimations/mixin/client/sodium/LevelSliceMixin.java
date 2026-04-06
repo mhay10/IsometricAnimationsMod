@@ -19,12 +19,9 @@ public class LevelSliceMixin {
     @Inject(method = "getBlockState(III)Lnet/minecraft/world/level/block/state/BlockState;", at = @At("HEAD"), cancellable = true)
     private void getBlockState(int blockX, int blockY, int blockZ, CallbackInfoReturnable<BlockState> cir) {
         // Filter blocks if animation region active
-        AABB activeRegion = AnimationManager.getActiveRegion();
-        if (activeRegion != null) {
+        if (AnimationManager.hasActiveRegion) {
             // Return AIR block if outside active region
-            BlockPos pos = new BlockPos(blockX, blockY, blockZ);
-            boolean insideRegion = activeRegion.contains(pos.getCenter());
-            if (!insideRegion) {
+            if (!AnimationManager.inActiveRegion(blockX, blockY, blockZ)) {
                 cir.setReturnValue(Blocks.AIR.defaultBlockState());
             }
         }
@@ -33,12 +30,9 @@ public class LevelSliceMixin {
     @Inject(method = "getBlockEntity(III)Lnet/minecraft/world/level/block/entity/BlockEntity;", at = @At("HEAD"), cancellable = true)
     private void getBlockEntity(int blockX, int blockY, int blockZ, CallbackInfoReturnable<BlockEntity> cir) {
         // Filter block entities if animation region active
-        AABB activeRegion = AnimationManager.getActiveRegion();
-        if (activeRegion != null) {
+        if (AnimationManager.hasActiveRegion) {
             // Return null block entity if outside active region
-            BlockPos pos = new BlockPos(blockX, blockY, blockZ);
-            boolean insideRegion = activeRegion.contains(pos.getCenter());
-            if (!insideRegion) {
+            if (!AnimationManager.inActiveRegion(blockX, blockY, blockZ)) {
                 cir.setReturnValue(null);
             }
         }
@@ -47,11 +41,9 @@ public class LevelSliceMixin {
     @Inject(method = "getFluidState", at = @At("HEAD"), cancellable = true)
     private void getFluidState(BlockPos pos, CallbackInfoReturnable<FluidState> cir) {
         // Filter fluids if animation region active
-        AABB activeRegion = AnimationManager.getActiveRegion();
-        if (activeRegion != null) {
+        if (AnimationManager.hasActiveRegion) {
             // Return empty fluid state if outside active region
-            boolean insideRegion = activeRegion.contains(pos.getCenter());
-            if (!insideRegion) {
+            if (!AnimationManager.inActiveRegion(pos.getX(), pos.getY(), pos.getZ())) {
                 cir.setReturnValue(Fluids.EMPTY.defaultFluidState());
             }
         }

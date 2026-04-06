@@ -28,6 +28,7 @@ import static com.isoanimations.IsometricAnimations.LOGGER;
 public class VideoStreamManager {
     // Recording objects
     private static FFmpegFrameRecorder recorder;
+    private static FFmpegFrameFilter filter;
     private static Frame cvFrame;
     private static Path outputFilePath;
     private static long frameCount = 0;
@@ -63,14 +64,19 @@ public class VideoStreamManager {
             recorder = new FFmpegFrameRecorder(outputFilePath.toString(), width, height);
             recorder.setFormat("mp4");
             recorder.setVideoCodec(avcodec.AV_CODEC_ID_H264);
-            recorder.setFrameRate(RenderConfig.outputFps);
+            recorder.setFrameRate(RenderConfig.getOutputFps());
             recorder.setPixelFormat(avutil.AV_PIX_FMT_YUV420P);
-//            recorder.setVideoOption("crf", "18");
+            recorder.setVideoQuality(18); // CRF
+//            recorder.setDisplayRotation(180);
 //            recorder.setOption("movflags", "frag_keyframe+empty_moov");
 
             // Start recorder
             recorder.start();
             frameCount = 0;
+
+            // Create filter for vertical flipping and RGB to BGR
+            filter = new FFmpegFrameFilter("vflip", width, height);
+            filter.start();
 
             // Create reusable frame object
             cvFrame = new Frame(width, height, Frame.DEPTH_UBYTE, 3); // 8 bit depth, BGR color
@@ -120,43 +126,23 @@ public class VideoStreamManager {
                 // Wait up to 10ms to get next frame from queue
                 ExportFrame frame = frameQueue.poll(10, TimeUnit.MILLISECONDS);
                 if (frame != null) {
-                    // Set frame data to export frame
-                    ByteBuffer buffer = frame.frameData;
-                    buffer.rewind();
-
-                    // Flip frame vertically to correct OpenGL coordinates
-                    for (int i = 0; i < height / 2; i++) {
-                        // Get top and bottom offsets
-                        int topOffset = i * pixelStride;
-                        int bottomOffset = (height - 1 - i) * pixelStride;
-
-                        // Read top and bottom rows
-                        buffer.position(topOffset);
-                        buffer.get(rowTop);
-                        buffer.position(bottomOffset);
-                        buffer.get(rowBottom);
-
-                        // Swap rows in buffer
-                        buffer.position(topOffset);
-                        buffer.put(rowBottom);
-                        buffer.position(bottomOffset);
-                        buffer.put(rowTop);
-                    }
-
                     // Save frame data to export frame
+                    ByteBuffer buffer = frame.frameData;
                     buffer.rewind();
                     nativeFrameBuffer.clear();
                     nativeFrameBuffer.put(buffer);
                     nativeFrameBuffer.rewind();
 
-                    // Calculate relative timestamp
-                    if (firstFrameTime == -1) {
-                        firstFrameTime = frame.timestampMicros;
-                    }
-                    cvFrame.timestamp = frame.timestampMicros - firstFrameTime;
+                    filter.push(cvFrame);
+                    Frame flippedFrame = filter.pull();
+
+
+                    // Calculate frame timestamp
+                    long timestamp = Math.round((frameCount * 1000000) / RenderConfig.getOutputFps());
+                    recorder.setTimestamp(timestamp);
 
                     // Record filtered frame
-                    recorder.record(cvFrame);
+                    recorder.record(flippedFrame);
                     frameCount++;
 
                     // Return buffer to pool after encoding
